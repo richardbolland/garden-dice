@@ -769,22 +769,59 @@ function tileKey(c, i) {
   const ripple = (x + y) % 2 === 0 || !(m & 15) ? 'w' : '';
   return [g, c.g === 'stepstone' ? c.base : '', c.fertile ? 'f' : '', c.compost ? 'c' : '', c.plant && c.plant.ring ? 'r' : '', i % 3, m, ripple].join('|');
 }
+/* ---------- tile templates (illustrated art) ---------- */
+// One six-tile template per joining ground type, 2 tiles wide and 3 tall:
+//   A (0,0) a single patch      B (1,0) four inner corners
+//   C D / E F (rows 1-2) one 2x2 patch: its outer corners, edges and middle
+// Every joined tile is built from four quarters. A quarter looks at its side neighbour, its
+// top/bottom neighbour and the corner between them, and takes the matching quarter from the template.
+const TILE_TEMPLATES = { wet: 'art/tiles/wet-soil_template.png', marsh: 'art/tiles/marsh_template.png', pond: 'art/tiles/pond_template.png', wild: 'art/tiles/meadow_template.png' };
+const USE_TILE_TEMPLATES = false; // switch on once the illustrated templates are published beside the page
+const tilesets = {};
+// per quarter: its column and row in the tile, then the mask bits of its side, top/bottom and corner neighbours
+const QUARTERS = [[0, 0, 3, 0, 7], [1, 0, 1, 0, 4], [0, 1, 3, 2, 6], [1, 1, 1, 2, 5]];
+function composeTile(g, img, m, size) {
+  const T = img.width / 2, Q = T / 2, q = size / 2;
+  if (!m) { g.drawImage(img, 0, 0, T, T, 0, 0, size, size); return; }
+  for (const [qx, qy, hb, vb, db] of QUARTERS) {
+    const h = m >> hb & 1, v = m >> vb & 1, d = m >> db & 1;
+    // inner corner comes from tile B; everything else from the 2x2 patch:
+    // outer corner = same corner tile, edges = the tile beside or below it, middle = the opposite tile
+    const [tx, ty] = h && v && !d ? [1, 0] : [h ? 1 - qx : qx, 1 + (v ? 1 - qy : qy)];
+    g.drawImage(img, tx * T + qx * Q, ty * T + qy * Q, Q, Q, qx * q, qy * q, q, q);
+  }
+}
+function useTileset(ground, img) {
+  if (img.width * 3 !== img.height * 2) { console.warn(`Tile template for ${ground} should be 2 tiles wide and 3 tall, got ${img.width} × ${img.height}`); return; }
+  tilesets[ground] = img;
+  for (const k of [...texCache.keys()]) if (k.startsWith('tile:')) texCache.delete(k);
+  views.forEach((v) => { v.tileKey = ''; });
+  if (S) refreshAll(false);
+}
+function loadTilesets() {
+  for (const [ground, src] of Object.entries(TILE_TEMPLATES)) { const img = new Image(); img.onload = () => useTileset(ground, img); img.src = src; }
+}
 function drawTile(key) {
   const [g0, base, fert, comp, ring, v, mk0, ripple] = key.split('|');
   const m = +mk0;
-  return canvasTex('tile:' + key, 128, 128, (g) => {
+  // drawn at 256 px so illustrated templates keep their detail; the placeholder art below uses 128 px units
+  return canvasTex('tile:' + key, 256, 256, (g) => {
+    g.scale(2, 2);
     const R = rng(+v * 977 + g0.length * 31);
     const ground = g0 === 'stepstone' ? base : g0;
+    const art = tilesets[ground];
     const fill = { dry: '#e4cf9a', wet: '#9f7a4b', marsh: '#8b9a52', pond: '#5fb2dc', dead: '#bca783', wild: '#9cc75a' }[ground] || '#e4cf9a';
-    autoPath(g, m, 5, 19); g.fillStyle = 'rgba(59,42,20,.55)'; g.fill();
-    autoPath(g, m, 9, 15); g.fillStyle = fill; g.fill();
+    if (art) composeTile(g, art, m, 128);
+    else { autoPath(g, m, 5, 19); g.fillStyle = 'rgba(59,42,20,.55)'; g.fill(); autoPath(g, m, 9, 15); g.fillStyle = fill; g.fill(); }
     g.save(); autoPath(g, m, 9, 15); g.clip();
-    if (ground === 'wild') for (let i = 0; i < 14; i++) { const x = 4 + R() * 120, y = 8 + R() * 116; line(g, [[x - 4, y], [x - 1, y - 9]], 3, '#7fb04a', 0); line(g, [[x + 3, y], [x + 4, y - 8]], 3, '#7fb04a', 0); }
+    if (art) { /* the template carries the ground; only overlays and detail stamps are drawn on top */ }
+    else if (ground === 'wild') for (let i = 0; i < 14; i++) { const x = 4 + R() * 120, y = 8 + R() * 116; line(g, [[x - 4, y], [x - 1, y - 9]], 3, '#7fb04a', 0); line(g, [[x + 3, y], [x + 4, y - 8]], 3, '#7fb04a', 0); }
     if (ground === 'dry') for (let i = 0; i < 18; i++) ell(g, 12 + R() * 104, 12 + R() * 104, 2 + R() * 3, 1.5 + R() * 2, '#cdb27a', 0);
-    if (ground === 'wet') { for (let i = 0; i < 10; i++) ell(g, 4 + R() * 120, 4 + R() * 120, 3 + R() * 4, 2 + R() * 2, '#83613a', 0); for (let i = 0; i < 4; i++) ell(g, 16 + R() * 96, 16 + R() * 96, 14 + R() * 10, 3, 'rgba(255,255,255,.28)', 0, -0.4); }
-    if (ground === 'marsh') { for (let i = 0; i < 4; i++) ell(g, 16 + R() * 96, 16 + R() * 96, 16 + R() * 10, 8 + R() * 5, '#5f9a9a', 0); for (let i = 0; i < 7; i++) { const x = 8 + R() * 112, y = 24 + R() * 96; line(g, [[x, y], [x + R() * 6 - 3, y - 14 - R() * 10]], 3, '#4f7a2a', 0); } }
+    if (!art && ground === 'wet') { for (let i = 0; i < 10; i++) ell(g, 4 + R() * 120, 4 + R() * 120, 3 + R() * 4, 2 + R() * 2, '#83613a', 0); for (let i = 0; i < 4; i++) ell(g, 16 + R() * 96, 16 + R() * 96, 14 + R() * 10, 3, 'rgba(255,255,255,.28)', 0, -0.4); }
+    if (!art && ground === 'marsh') { for (let i = 0; i < 4; i++) ell(g, 16 + R() * 96, 16 + R() * 96, 16 + R() * 10, 8 + R() * 5, '#5f9a9a', 0); for (let i = 0; i < 7; i++) { const x = 8 + R() * 112, y = 24 + R() * 96; line(g, [[x, y], [x + R() * 6 - 3, y - 14 - R() * 10]], 3, '#4f7a2a', 0); } }
     if (ground === 'pond') {
-      autoPath(g, m, 26, 30); g.fillStyle = '#7cc6ea'; g.fill();
+      if (!art) { autoPath(g, m, 26, 30); g.fillStyle = '#7cc6ea'; g.fill(); }
+      // ripples stay a separate detail stamp so they never repeat in the template
       if (ripple) for (const r of [16, 30]) { g.beginPath(); g.ellipse(64 + R() * 8 - 4, 64, r, r * 0.6, 0, 0, TAU); g.lineWidth = 3; g.strokeStyle = 'rgba(255,255,255,.55)'; g.stroke(); }
     }
     if (ground === 'dead') for (let i = 0; i < 5; i++) { const x = 20 + R() * 88, y = 20 + R() * 88; line(g, [[x, y], [x + 12, y + 8], [x + 10, y + 22]], 3, '#7d6a4a', 0); }
@@ -1423,6 +1460,7 @@ function boot(data) {
   // older saves may hold wilted plants or dead patches from before the garden went cozy
   S.grid.forEach((c) => { if (c.plant) c.plant.wilt = false; if (c.g === 'dead') { c.g = 'dry'; c.compost = true; } });
   refreshAll(false); renderHUD(); fit(); startDay();
+  if (USE_TILE_TEMPLATES || /[?&]tiles=1\b/.test(location.search)) loadTilesets();
   requestAnimationFrame(loop);
 }
 window.claude?.hot?.snapshot?.(() => ({ S }));
@@ -1431,6 +1469,8 @@ window.claude?.hot?.ready ? window.claude.hot.ready(boot) : boot(window.claude?.
 // test hooks for playtesting
 window.GD = { get S() { return S; }, get phase() { return phase; }, get dice() { return dice; },
   TUNE, rules: { applyFace, runNight, stateOf, newGame, newPlant, set S(v) { S = v; } }, refreshAll,
+  // art export: the canvas draw functions, so placeholder art can be saved as reference PNGs
+  art: { SPR, CRIT, ICON, mk, drawTile, autoPath, composeTile, useTileset, loadTilesets, tilesets },
   reach(power, trials = 6) {
     const zs = [];
     for (let i = 0; i < trials; i++) {
