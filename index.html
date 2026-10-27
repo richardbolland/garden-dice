@@ -1,0 +1,1449 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>[hidden]{display:none!important}body{margin:0}</style></head><body>
+<title>Garden Dice</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sniglet:wght@400;800&family=Nunito:wght@500;700;800&display=swap">
+<style>
+/* Layout: full-bleed 3D garden plot; HUD chips float top and bottom like the mockup; evening shop slides up as a sheet. */
+:root {
+  --grass: #b4d465;
+  --grass-deep: #8fbf4a;
+  --rim: #7a6a3e;
+  --soil: #dcc795;
+  --ink: #3b2a14;
+  --paper: #fff8e6;
+  --peach: #f2a65a;
+  --leaf: #5e9a35;
+  --water: #4fb3e8;
+  --night: rgba(22, 30, 72, .58);
+  --font-display: "Sniglet", "Nunito", system-ui, sans-serif;
+  --font-body: "Nunito", system-ui, sans-serif;
+  color-scheme: light;
+}
+html, body { height: 100%; }
+body { background: var(--grass); color: var(--ink); font-family: var(--font-body); overflow: hidden; -webkit-user-select: none; user-select: none; }
+#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+
+.hud-top {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 5; pointer-events: none;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding-top: calc(10px + env(safe-area-inset-top, 0px));
+  padding-left: max(14px, env(safe-area-inset-left, 0px));
+  padding-right: max(14px, env(safe-area-inset-right, 0px));
+}
+.pill {
+  pointer-events: auto; display: inline-flex; align-items: center; gap: 6px;
+  background: var(--paper); border: 2.5px solid var(--ink); border-radius: 999px;
+  padding: 4px 12px 4px 8px; font-family: var(--font-display); font-weight: 800; font-size: 17px;
+  box-shadow: 0 3px 0 var(--ink); font-variant-numeric: tabular-nums;
+}
+.pill img { width: 22px; height: 22px; }
+.pill.bump { animation: bump .35s ease-out; }
+@keyframes bump { 40% { transform: scale(1.18); } }
+.pips { display: flex; gap: 5px; }
+.pip { width: 24px; height: 24px; border-radius: 7px; border: 2px solid var(--ink); background: #efe2bf; display: grid; place-items: center; font-weight: 800; font-size: 13px; }
+.pip img { width: 18px; height: 18px; }
+.pip.lost { background: #e9c4b4; }
+.pip.next { background: var(--paper); box-shadow: 0 0 0 2px var(--peach); }
+.icon-btn { pointer-events: auto; width: 36px; height: 36px; border-radius: 50%; border: 2.5px solid var(--ink); background: var(--paper); font-family: var(--font-display); font-weight: 800; font-size: 18px; color: var(--ink); box-shadow: 0 3px 0 var(--ink); cursor: pointer; }
+.icon-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--ink); }
+
+.bar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px)); padding-top: 4px;
+  padding-left: max(10px, env(safe-area-inset-left, 0px)); padding-right: max(10px, env(safe-area-inset-right, 0px));
+}
+.tabs { display: flex; gap: 2px; background: var(--paper); border: 2.5px solid var(--ink); border-radius: 999px; padding: 3px; box-shadow: 0 3px 0 var(--ink); }
+.tab { border: 0; background: none; border-radius: 999px; padding: 4px 14px; font-family: var(--font-display); font-weight: 800; font-size: 14px; color: var(--ink); cursor: pointer; }
+.tab[aria-selected="true"] { background: var(--peach); }
+.tab:disabled { opacity: .4; cursor: default; }
+.panel { display: flex; gap: 6px; justify-content: safe center; max-width: 100%; overflow-x: auto; min-height: 74px; align-items: flex-start; padding: 2px 4px 4px; scrollbar-width: none; }
+.note { align-self: center; max-width: 320px; text-align: center; font-weight: 800; font-size: 14px; line-height: 1.35; background: var(--paper); border: 2.5px solid var(--ink); border-radius: 14px; padding: 8px 12px; box-shadow: 0 3px 0 var(--ink); }
+.chip { flex: none; display: flex; flex-direction: column; align-items: center; gap: 2px; width: 56px; background: none; border: 0; padding: 0; cursor: pointer; color: var(--ink); font-family: var(--font-body); }
+.chip .face { width: 46px; height: 46px; border-radius: 12px; border: 2.5px solid var(--ink); background: var(--paper); display: grid; place-items: center; box-shadow: 0 3px 0 var(--ink); }
+.chip .face img { width: 34px; height: 34px; }
+.chip span { font-size: 11px; font-weight: 800; line-height: 1.05; text-align: center; }
+.chip small { font-size: 11px; font-weight: 800; color: var(--rim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.chip.sel .face { background: #ffe9cc; box-shadow: 0 0 0 3px var(--peach), 0 3px 0 var(--ink); }
+.chip.owned .face { background: #e6f2cf; }
+.chip:disabled { opacity: .45; cursor: not-allowed; }
+.chip:focus-visible .face, button:focus-visible { outline: 3px solid var(--water); outline-offset: 2px; }
+.tags { position: fixed; inset: 0; z-index: 4; pointer-events: none; }
+.tag { position: absolute; transform: translate(-50%, -50%); pointer-events: auto; display: inline-flex; align-items: center; gap: 5px; background: var(--paper); border: 2.5px solid var(--ink); border-radius: 999px; padding: 4px 12px 4px 6px; box-shadow: 0 3px 0 var(--ink); font-family: var(--font-display); font-weight: 800; font-size: 16px; color: var(--ink); cursor: pointer; white-space: nowrap; }
+.tag img { width: 22px; height: 22px; }
+.tag.sel { background: var(--peach); }
+.tag.poor { opacity: .6; }
+
+.toast {
+  position: fixed; left: 50%; z-index: 6; transform: translate(-50%, 8px); opacity: 0; pointer-events: none;
+  bottom: calc(132px + env(safe-area-inset-bottom, 0px)); max-width: min(420px, calc(100vw - 32px));
+  background: var(--paper); border: 2.5px solid var(--ink); border-radius: 14px; box-shadow: 0 3px 0 var(--ink);
+  padding: 8px 12px; display: flex; gap: 10px; align-items: center; font-weight: 700; font-size: 14px; line-height: 1.3;
+  transition: opacity .2s, transform .2s;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+.toast img { width: 30px; height: 30px; flex: none; }
+.toast b { font-family: var(--font-display); font-weight: 800; }
+
+.hint { position: fixed; left: 50%; transform: translateX(-50%); z-index: 4; pointer-events: none; bottom: calc(150px + env(safe-area-inset-bottom, 0px));
+  font-family: var(--font-display); font-weight: 800; color: var(--paper); font-size: 17px; text-shadow: 0 2px 0 var(--ink), 0 0 6px rgba(59,42,20,.6); width: max-content; max-width: calc(100vw - 32px); text-align: center; text-wrap: balance; transition: opacity .3s; }
+
+#night { position: fixed; inset: 0; z-index: 3; pointer-events: none; background: var(--night); opacity: 0; transition: opacity .7s ease; display: grid; place-items: center; }
+#night.on { opacity: 1; }
+#night p { font-family: var(--font-display); font-weight: 800; font-size: 34px; color: #fff4cf; text-shadow: 0 3px 0 var(--ink); }
+
+#fx { position: fixed; inset: 0; z-index: 7; pointer-events: none; }
+.floater { position: absolute; transform: translate(-50%, -50%); font-family: var(--font-display); font-weight: 800; font-size: 22px; color: #ffe27a; text-shadow: 0 2px 0 var(--ink), 0 0 2px var(--ink); animation: rise 1.4s ease-out forwards; white-space: nowrap; }
+@keyframes rise { 0% { opacity: 0; transform: translate(-50%, -20%) scale(.6); } 15% { opacity: 1; transform: translate(-50%, -60%) scale(1.15); } 100% { opacity: 0; transform: translate(-50%, -260%) scale(1); } }
+
+.sheet-wrap { position: fixed; inset: 0; z-index: 8; background: rgba(59,42,20,.35); display: flex; align-items: flex-end; justify-content: center; }
+.sheet {
+  width: min(560px, 100%); max-height: 88%; overflow-y: auto; background: var(--paper); border: 3px solid var(--ink); border-bottom: 0;
+  border-radius: 22px 22px 0 0; box-shadow: 0 -4px 0 var(--rim);
+  padding-block: 18px calc(18px + env(safe-area-inset-bottom, 0px));
+  padding-left: max(18px, env(safe-area-inset-left, 0px)); padding-right: max(18px, env(safe-area-inset-right, 0px));
+  animation: slide .35s cubic-bezier(.2,.9,.3,1.1);
+  display: flex; flex-direction: column; gap: 12px;
+}
+@keyframes slide { from { transform: translateY(100%); } }
+.sheet h2 { margin: 0; font-family: var(--font-display); font-weight: 800; font-size: 26px; text-wrap: balance; }
+.sheet h3 { margin: 4px 0 0; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--rim); }
+.sheet p { margin: 0; line-height: 1.45; }
+.go { align-self: stretch; font-family: var(--font-display); font-weight: 800; font-size: 20px; color: var(--ink); background: var(--peach); border: 3px solid var(--ink); border-radius: 16px; padding: 12px; box-shadow: 0 4px 0 var(--ink); cursor: pointer; }
+.go:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--ink); }
+.go.quiet { background: #f6ead0; font-size: 15px; padding: 8px; }
+.rules { display: grid; gap: 8px; }
+.rule { display: grid; grid-template-columns: 34px 1fr; gap: 10px; align-items: center; }
+.rule img { width: 34px; height: 34px; }
+.rule p { font-size: 14px; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+@media (max-width: 420px) { .chip { width: 50px; } .tab { padding: 4px 10px; } .chip .face { width: 42px; height: 42px; } .pill { font-size: 15px; } .pip { width: 20px; height: 20px; } .pip img { width: 15px; height: 15px; } }
+</style>
+
+<canvas id="scene" aria-label="Garden plot. Drag back from the die and release to throw it."></canvas>
+<header class="hud-top">
+  <div style="display:flex;gap:8px;align-items:center">
+    <span class="pill" id="dayPill">Day <span id="day">1</span></span>
+    <span class="pill" id="coinPill"><img id="coinIcon" alt=""> <span id="coins">0</span></span>
+  </div>
+  <div class="pips" id="pips" aria-label="Throws today"></div>
+  <button class="icon-btn" id="helpBtn" aria-label="How to play">?</button>
+</header>
+<div class="hint" id="hint">Drag back from the die and let go</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<nav class="bar" id="bar" aria-label="Garden tools">
+  <div class="tabs" id="tabs" role="tablist"></div>
+  <div class="panel" id="panel" role="tabpanel"></div>
+</nav>
+<div class="tags" id="tags"></div>
+<div id="night"><p id="nightText">Night 1</p></div>
+<div id="fx"></div>
+
+<div class="sheet-wrap" id="help" hidden>
+  <section class="sheet" aria-labelledby="helpTitle">
+    <h2 id="helpTitle">How to grow a garden</h2>
+    <p>Drag back from the die and let go to throw it. Where it settles and the face that lands up decide what happens to that patch. After 5 throws the day ends: effects apply at dusk, plants grow overnight if they were watered, and grown plants pay coins at dawn.</p>
+    <p>Nothing in this garden ever dies. Wet soil stays damp until something is planted in it. The plant drinks that water on its first night, then needs watering again to keep growing. A plant that isn't watered simply waits. Ponds water their 4 neighbours every night, springs water their 4 diagonals, and dragonflies water every plant around them.</p>
+    <p>Spend coins in the tabs under the garden, any time before a throw. <b>Dice</b>: tap a face to swap it. <b>Seeds</b>: unlock new plants for your die. <b>Land</b>: buy the meadow next to your garden, one plot at a time. <b>Decor</b>: buy a decoration and tap empty soil to place it; tap a placed one to move it.</p>
+    <h3>Faces</h3>
+    <div class="rules" id="rules"></div>
+    <button class="go" id="closeHelp">Back to the garden</button>
+    <button class="go quiet" id="resetBtn">Start a new garden</button>
+  </section>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+  "cannon-es": "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import * as CANNON from 'cannon-es';
+
+/* =========================================================
+   RULES DATA (mirrors the combo spreadsheet)
+   ========================================================= */
+const COLS = 8, ROWS = 12, THROWS = 5;
+// The camera looks down at TILT, which squashes depth on screen by sin(TILT).
+// Cells are stretched front-to-back by 1/sin(TILT) so they read as squares.
+const TILT = THREE.MathUtils.degToRad(56), CZ = 1 / Math.sin(TILT);
+const X0 = -COLS / 2, Z0 = -ROWS * CZ / 2, GRID_END = Z0 + ROWS * CZ;
+// walls sit flush with the grid; only the throwing area below it is off-plot
+const BOUND = { x: COLS / 2, zMin: Z0, zMax: GRID_END + 3.6 };
+const LAUNCH = new THREE.Vector3(0, 0.6, GRID_END + 2.3);
+const FACES = ['Water', 'Seed', 'Fruit Seed', 'Rock', 'Fertiliser', 'Creature'];
+const PRICE = { Water: 5, Seed: 5, 'Fruit Seed': 20, Rock: 6, Fertiliser: 12, Creature: 15, Lavender: 6, Sunflower: 8, Pumpkin: 10 };
+const ORDER = ['Rock', 'Seed', 'Fruit Seed', 'Lavender', 'Sunflower', 'Pumpkin', 'Fertiliser', 'Water', 'Creature'];
+const FACE_TIP = {
+  Water: 'Adds water: dry soil → wet → marsh → pond. Waters plants. Grows moss on rocks, then a spring.',
+  Seed: 'Plants a flower seed. Grows cattails in a marsh, a lily on a pond, a fern on mossy rock.',
+  'Fruit Seed': 'Plants a fruit tree seed. On a plant it grafts it, adding +1 coin per payout.',
+  Rock: 'Places a rock that later dice can land on. Rolls aside from small plants and makes a water-holding ring around big ones.',
+  Fertiliser: 'Makes things grow quicker: instant sprouts, +1 stage, or a double payout.',
+  Creature: 'Spawns a creature that depends on where it lands: frogs on wet soil, ladybugs on shoots, birds in trees.',
+  Lavender: 'Plants lavender on soil. Quick to grow, then pays 2 coins every watered night.',
+  Sunflower: 'Plants a sunflower on soil. Grows tall over 3 nights, pays 8 when it opens, then 8 every 3 watered nights.',
+  Pumpkin: 'Plants a pumpkin vine on soil. Ripens over 3 nights and pays 15, then the vine grows another.',
+};
+// seed catalogue: species unlocked once, then available as die faces
+const SPECIES = {
+  Lavender: { t: 'lavender', unlock: 15 },
+  Sunflower: { t: 'sunflower', unlock: 30 },
+  Pumpkin: { t: 'pumpkin', unlock: 50 },
+};
+// land: the plot is split into 4x3 blocks; you start with the bottom row and buy neighbouring blocks
+const BW = 4, BH = 3, BCOLS = COLS / BW, BROWS = ROWS / BH;
+const blockOf = (x, y) => Math.floor(y / BH) * BCOLS + Math.floor(x / BW);
+const START_LAND = [BCOLS * (BROWS - 1), BCOLS * (BROWS - 1) + 1];
+const LAND_PRICE = [20, 35, 55, 80, 110, 150];
+// decorations: bought and placed by hand on empty soil
+const DECOR = {
+  lantern: { name: 'Lantern', price: 8, tip: 'Glows warmly through the night.' },
+  bench: { name: 'Bench', price: 12, tip: 'A spot to sit and enjoy the garden.' },
+  gnome: { name: 'Gnome', price: 15, tip: 'Keeps a friendly eye on things.' },
+  logs: { name: 'Log Pile', price: 20, tip: 'Brings a ladybug to a plant within 2 patches.' },
+  birdbath: { name: 'Birdbath', price: 25, tip: 'Waters the 4 plants around it every night.' },
+  beehive: { name: 'Beehive', price: 35, tip: 'Brings a bee to a flowering plant within 2 patches.' },
+};
+const STATES = ['Dry Soil', 'Wet Soil', 'Marsh', 'Pond', 'Rock', 'Mossy Rock', 'Seedling', 'Shoot', 'Flower Bush', 'Sapling', 'Fruit Tree', 'Wilted Plant', 'Dead Patch'];
+const RESULT = {
+  Water: ['Soil gets wet', 'Turns into a marsh', 'Floods into a pond', 'Overflows and splashes the 4 neighbours', 'Moss grows on the rock', 'Becomes a little spring', 'Watered: sprouts tonight', 'Watered: grows tonight', 'Watered: stays healthy', 'Watered: grows tonight', 'Watered: fruits tonight', 'Revived: recovers and grows tonight', 'Washed clean: wet soil that keeps its compost'],
+  Seed: ['Plants a flower seed', 'Plants a flower seed, already watered', 'Grows cattails', 'Grows a lily pad', 'Rolls off into a neighbouring cell', 'Grows a fern in the moss', 'Spare seed scatters next door', 'Spare seed scatters next door', 'Bush spreads: new seedling next door', 'Seed scatters next door', 'Flower seed planted under the canopy', 'Reseeded with a fresh flower seedling', 'Planted on compost: starts as a shoot'],
+  'Fruit Seed': ['Plants a fruit seed', 'Plants a fruit seed, already watered', 'Grows a willow sapling', 'Floats ashore and plants on the bank', 'Rolls off into a neighbouring cell', 'Rots into mushrooms: +3 at dawn', 'Graft: pays +1 more', 'Graft: pays +1 more', 'Berry graft: +2 per bloom', 'Graft: +1 per night once mature', 'Graft: +1 per night', 'Replanted with a fruit seedling', 'Planted on compost: starts as a shoot'],
+  Rock: ['Places a rock', 'Places a rock that grows moss', 'Stepping stone in the marsh', 'Stepping stone in the pond', 'Stacks into a boulder', 'Stacks into a mossy boulder', 'Rolls aside and settles next to the seedling', 'Rolls aside and settles next to the shoot', 'Stone ring: holds water for 3 nights', 'Stone ring: holds water for 3 nights', 'Stone ring: holds water for 3 nights', 'Rolls aside and settles next to the plant', 'Places a rock'],
+  Fertiliser: ['Fertile soil: the next plant grows faster', 'Fertile wet soil', 'Cattails sprout', 'Lily pads bloom', 'Moss grows on the rock', 'Mushrooms pop up: +2 at dawn', 'Sprouts instantly', '+1 extra stage tonight if watered', 'Big bloom: next bloom pays double', '+1 extra stage tonight if watered', 'Bumper crop: next fruit pays double', 'Perks up: survives tonight', 'Rich compost'],
+  Creature: ['A worm burrows in', 'A frog hops in', 'A dragonfly arrives', 'A koi appears', 'A lizard basks on the rock', 'A snail slides out of the moss', 'A worm tends the seed', 'A ladybug lands', 'A bee visits the flowers', 'A ladybug lands', 'A bird nests in the tree', 'A ladybug eats the aphids', 'A worm makes compost'],
+};
+// catalogue species plant on soil; anywhere else the seed rolls into a neighbouring patch
+for (const f of Object.keys(SPECIES)) {
+  const n = f.toLowerCase();
+  RESULT[f] = STATES.map((s) => (s === 'Dry Soil' ? `Plants ${n}` : s === 'Wet Soil' ? `Plants ${n}, already watered` : s === 'Dead Patch' ? `Plants ${n} on compost` : `Seed rolls into a neighbouring patch`));
+}
+const CRIT_FOR = ['worm', 'frog', 'dragonfly', 'koi', 'lizard', 'snail', 'worm', 'ladybug', 'bee', 'ladybug', 'bird', 'ladybug', 'worm'];
+
+/* =========================================================
+   GAME STATE
+   ========================================================= */
+const SAVE_KEY = 'garden-dice-v1';
+const newCell = () => ({ g: 'dry', wetAge: 0, deadAge: 0, mossyB: false, base: null, fertile: false, compost: false, plant: null, crit: null });
+const newPlant = (t, s = 0) => ({ t, s, wilt: false, w: false, ex: 0, fx: 0, graft: 0, dbl: false, ring: 0, bloom: 0, survive: false });
+function newGame() {
+  const S = { day: 1, coins: 10, die: ['Seed', 'Seed', 'Water', 'Water', 'Water', 'Rock'], grid: Array.from({ length: COLS * ROWS }, newCell), pending: [],
+    land: Array.from({ length: BCOLS * BROWS }, (_, b) => START_LAND.includes(b)), unlocked: [] };
+  // a few starter features on the starting strip so it isn't bare
+  const c = (x, y) => S.grid[y * COLS + x];
+  c(6, 9).g = 'rock';
+  c(1, 11).g = 'pond'; c(1, 10).g = 'wet';
+  c(5, 10).g = 'wet'; c(5, 10).plant = newPlant('flower', 1); c(5, 10).plant.w = true;
+  c(3, 11).plant = newPlant('flower', 0);
+  return S;
+}
+// mark every cell of an unbought block as locked meadow
+function syncLand() { S.grid.forEach((c, i) => { c.locked = !S.land[blockOf(i % COLS, Math.floor(i / COLS))]; }); }
+const landBought = () => S.land.filter(Boolean).length - START_LAND.length;
+const landPrice = () => LAND_PRICE[Math.min(landBought(), LAND_PRICE.length - 1)];
+function buyable(b) {
+  if (S.land[b]) return false;
+  const bx = b % BCOLS, by = Math.floor(b / BCOLS);
+  return [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([a, d]) => bx + a >= 0 && bx + a < BCOLS && by + d >= 0 && by + d < BROWS && S.land[(by + d) * BCOLS + bx + a]);
+}
+let S;
+function load() {
+  try { const raw = localStorage.getItem(SAVE_KEY); if (raw) { const s = JSON.parse(raw); if (s && s.grid && s.grid.length === COLS * ROWS) return s; } } catch (e) {}
+  return null;
+}
+function save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (e) {} }
+
+const inBounds = (x, y) => x >= 0 && y >= 0 && x < COLS && y < ROWS;
+const cell = (x, y) => S.grid[y * COLS + x];
+// gameplay only ever reaches cells on land you own
+const inGrid = (x, y) => inBounds(x, y) && !cell(x, y).locked;
+const N4 = [[1, 0], [-1, 0], [0, 1], [0, -1]], ND = [[1, 1], [-1, 1], [1, -1], [-1, -1]], N8 = [...N4, ...ND];
+const around = (x, y, list) => list.map(([a, b]) => [x + a, y + b]).filter(([a, b]) => inGrid(a, b));
+const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+const pick = (a) => a[Math.floor(Math.random() * a.length)];
+const isEmptySoil = (c) => !c.plant && !c.decor && !c.locked && (c.g === 'dry' || c.g === 'wet');
+const waterOf = (c) => (c.g === 'stepstone' ? c.base : c.g);
+const isWatery = (c) => ['wet', 'marsh', 'pond'].includes(waterOf(c));
+const ROCKY = ['rock', 'mossy', 'spring', 'boulder', 'stepstone'];
+
+function stateOf(c) {
+  const p = c.plant;
+  if (p) {
+    if (p.wilt) return 'Wilted Plant';
+    if (p.t === 'flower') return ['Seedling', 'Shoot', 'Flower Bush'][p.s];
+    if (p.t === 'fruit') return ['Seedling', 'Shoot', 'Sapling', 'Fruit Tree'][p.s];
+    if (p.t === 'willow') return p.s >= 3 ? 'Fruit Tree' : 'Sapling';
+    if (p.t === 'lavender') return ['Seedling', 'Shoot', 'Flower Bush'][p.s];
+    if (p.t === 'sunflower') return ['Seedling', 'Shoot', 'Sapling', 'Flower Bush'][p.s];
+    if (p.t === 'pumpkin') return ['Seedling', 'Shoot', 'Shoot', 'Flower Bush'][p.s];
+    return 'Flower Bush';
+  }
+  switch (c.g) {
+    case 'dry': return 'Dry Soil';
+    case 'wet': return 'Wet Soil';
+    case 'marsh': return 'Marsh';
+    case 'pond': return 'Pond';
+    case 'rock': case 'stepstone': return 'Rock';
+    case 'mossy': case 'spring': return 'Mossy Rock';
+    case 'boulder': return c.mossyB ? 'Mossy Rock' : 'Rock';
+    case 'dead': return 'Dead Patch';
+  }
+  return 'Dry Soil';
+}
+const resultText = (face, c) => (c.decor ? `Bounces off the ${DECOR[c.decor].name.toLowerCase()} into the next patch` : RESULT[face][STATES.indexOf(stateOf(c))]);
+// a die that lands on a decoration applies to the nearest open neighbour instead
+function besideDecor(x, y) {
+  for (const list of [N4, ND]) {
+    const spots = shuffle(around(x, y, list).filter(([a, b]) => !cell(a, b).decor));
+    if (spots.length) return spots[0];
+  }
+  return null;
+}
+
+/* ---------- combo effects (applied at dusk) ---------- */
+function plantIn(c, t, { watered = false, stage = 0 } = {}) {
+  const p = newPlant(t, stage);
+  if (c.compost) { p.s = Math.max(p.s, 1); c.compost = false; }
+  if (c.fertile) { p.fx = 1; c.fertile = false; }
+  if (c.g === 'dead') c.g = 'dry';
+  if (c.g === 'wet') watered = true;
+  if (watered && c.g === 'dry') { c.g = 'wet'; c.wetAge = 0; }
+  p.w = watered;
+  c.plant = p;
+}
+function scatter(x, y, t, watered, list = N8) {
+  const spots = shuffle(around(x, y, list).filter(([a, b]) => isEmptySoil(cell(a, b))));
+  if (!spots.length) return false;
+  const [a, b] = spots[0];
+  plantIn(cell(a, b), t, { watered });
+  touched.add(b * COLS + a);
+  return true;
+}
+function waterPlantCell(c) { c.plant.w = true; if (c.g === 'dry') { c.g = 'wet'; c.wetAge = 0; } }
+function splash(x, y) {
+  for (const [a, b] of around(x, y, N4)) {
+    const n = cell(a, b);
+    if (n.plant) waterPlantCell(n);
+    else if (n.g === 'dry') { n.g = 'wet'; n.wetAge = 0; }
+    touched.add(b * COLS + a);
+  }
+}
+function addCoinsLater(x, y, n) { S.pending.push({ x, y, n }); }
+function spawn(x, y, k) {
+  const c = cell(x, y);
+  if (!c.crit) { c.crit = { k, n: 0, pair: false }; return; }
+  if (c.crit.k === k) { c.crit.pair = true; return; }
+  // different creature already here: nearest free cell
+  let best = null, bd = 1e9;
+  S.grid.forEach((n, i) => { if (n.crit || n.locked) return; const a = i % COLS, b = Math.floor(i / COLS); const d = Math.hypot(a - x, b - y); if (d < bd) { bd = d; best = [a, b]; } });
+  if (best) { cell(best[0], best[1]).crit = { k, n: 0, pair: false }; touched.add(best[1] * COLS + best[0]); }
+}
+
+let touched = new Set();
+function applyFace(face, x, y) {
+  if (cell(x, y).decor) { const spot = besideDecor(x, y); if (spot) applyFace(face, spot[0], spot[1]); return; }
+  const c = cell(x, y), st = stateOf(c), p = c.plant;
+  touched.add(y * COLS + x);
+  if (SPECIES[face]) {
+    const t = SPECIES[face].t;
+    if (!p && (c.g === 'dry' || c.g === 'wet')) { plantIn(c, t); return; }
+    if (!p && c.g === 'dead') { c.g = 'dry'; c.compost = true; plantIn(c, t); return; }
+    scatter(x, y, t, false); return;
+  }
+  switch (face) {
+    case 'Water':
+      if (p) {
+        if (p.wilt) { p.wilt = false; waterPlantCell(c); return; }
+        if (p.w) { splash(x, y); return; }
+        waterPlantCell(c); return;
+      }
+      switch (c.g) {
+        case 'dry': c.g = 'wet'; c.wetAge = 0; return;
+        case 'wet': c.g = 'marsh'; return;
+        case 'marsh': c.g = 'pond'; return;
+        case 'rock': c.g = 'mossy'; return;
+        case 'mossy': c.g = 'spring'; return;
+        case 'boulder': if (c.mossyB) c.g = 'spring'; else c.mossyB = true; return;
+        case 'dead': c.g = 'wet'; c.wetAge = 0; c.compost = true; return;
+        default: splash(x, y); return; // pond, spring, stepping stone
+      }
+    case 'Seed': case 'Fruit Seed': {
+      const fruit = face === 'Fruit Seed', t = fruit ? 'fruit' : 'flower';
+      if (p) {
+        if (st === 'Wilted Plant') { c.plant = null; plantIn(c, t); return; }
+        if (fruit) { p.graft = Math.min(3, p.graft + (st === 'Flower Bush' ? 2 : 1)); return; }
+        scatter(x, y, 'flower', st === 'Flower Bush'); return;
+      }
+      if (st === 'Mossy Rock') { if (fruit) addCoinsLater(x, y, 3); else c.plant = newPlant('fern'); return; }
+      switch (c.g) {
+        case 'dry': case 'wet': plantIn(c, t); return;
+        case 'marsh': c.plant = newPlant(fruit ? 'willow' : 'cattail'); return;
+        case 'pond': if (fruit) scatter(x, y, 'fruit', true, N4); else c.plant = newPlant('lily'); return;
+        case 'dead': c.g = 'dry'; c.compost = true; plantIn(c, t); return;
+        default: scatter(x, y, t, false); return; // rocks roll the seed off
+      }
+    }
+    case 'Rock':
+      if (p) {
+        if (['Seedling', 'Shoot', 'Wilted Plant'].includes(st)) {
+          // small plants are never crushed: the rock rolls aside
+          const spot = pick(around(x, y, N8).filter(([a, b]) => isEmptySoil(cell(a, b))));
+          if (spot) { const n = cell(spot[0], spot[1]); n.g = n.g === 'wet' ? 'mossy' : 'rock'; touched.add(spot[1] * COLS + spot[0]); }
+          return;
+        }
+        p.ring = 3; return;
+      }
+      switch (c.g) {
+        case 'dry': c.g = 'rock'; return;
+        case 'wet': c.g = 'mossy'; return;
+        case 'marsh': case 'pond': c.base = c.g; c.g = 'stepstone'; return;
+        case 'rock': case 'stepstone': c.g = 'boulder'; c.mossyB = false; return;
+        case 'mossy': case 'spring': c.g = 'boulder'; c.mossyB = true; return;
+        case 'dead': c.g = 'rock'; c.compost = false; return;
+        default: return;
+      }
+    case 'Fertiliser':
+      if (p) {
+        if (st === 'Seedling') { p.s = 1; return; }
+        if (st === 'Shoot' || st === 'Sapling') { p.ex += 1; return; }
+        if (st === 'Wilted Plant') { p.survive = true; return; }
+        p.dbl = true; return;
+      }
+      switch (c.g) {
+        case 'dry': case 'wet': c.fertile = true; return;
+        case 'marsh': c.plant = newPlant('cattail'); return;
+        case 'pond': c.plant = newPlant('lily'); return;
+        case 'rock': c.g = 'mossy'; return;
+        case 'boulder': if (!c.mossyB) { c.mossyB = true; return; } addCoinsLater(x, y, 2); return;
+        case 'mossy': case 'spring': addCoinsLater(x, y, 2); return;
+        case 'dead': c.compost = true; c.fertile = true; return;
+        default: return;
+      }
+    case 'Creature':
+      spawn(x, y, CRIT_FOR[STATES.indexOf(st)]);
+      if (p && p.wilt) p.wilt = false;
+      return;
+  }
+}
+
+/* ---------- overnight ---------- */
+function runNight() {
+  const pay = S.pending.splice(0);
+  const bonus = new Map();
+  const key = (x, y) => y * COLS + x;
+  const each = (fn) => { for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) fn(cell(x, y), x, y); };
+
+  // passive watering
+  each((c, x, y) => {
+    if (waterOf(c) === 'pond') around(x, y, N4).forEach(([a, b]) => { const n = cell(a, b); if (n.plant) n.plant.w = true; });
+    if (c.g === 'spring') around(x, y, ND).forEach(([a, b]) => { const n = cell(a, b); if (n.plant) n.plant.w = true; });
+    if (c.decor === 'birdbath') around(x, y, N4).forEach(([a, b]) => { const n = cell(a, b); if (n.plant) n.plant.w = true; });
+  });
+  // decorations bring a creature within 2 patches when none of that kind is already close
+  each((c, x, y) => {
+    const want = { logs: ['ladybug', (n) => !!n.plant], beehive: ['bee', (n) => stateOf(n) === 'Flower Bush'] }[c.decor];
+    if (!want) return;
+    const [k, ok] = want, spots = [];
+    let has = false;
+    for (let b = y - 2; b <= y + 2; b++) for (let a = x - 2; a <= x + 2; a++) {
+      if (!inGrid(a, b)) continue; const n = cell(a, b);
+      if (n.crit && n.crit.k === k) has = true; else if (!n.crit && ok(n)) spots.push([a, b]);
+    }
+    if (!has && spots.length) { const [a, b] = pick(spots); cell(a, b).crit = { k, n: 0, pair: false }; }
+  });
+  // creatures acting before growth
+  each((c, x, y) => {
+    const k = c.crit; if (!k) return; const m = k.pair ? 2 : 1;
+    if (k.k === 'dragonfly') around(x, y, N8).forEach(([a, b]) => { const n = cell(a, b); if (n.plant) n.plant.w = true; });
+    if (k.k === 'ladybug' && c.plant) c.plant.ex += m;
+    if (k.k === 'bee') around(x, y, N8).forEach(([a, b]) => { const n = cell(a, b); if (n.plant) { bonus.set(key(a, b), (bonus.get(key(a, b)) || 0) + m); if (n.plant.t === 'flower') n.plant.bloom++; } });
+    if (k.k === 'worm' && (c.g === 'dry' || c.g === 'wet' || c.g === 'dead')) { if (c.g === 'dead') c.compost = true; else c.fertile = true; }
+  });
+  // plants
+  const MAX = { flower: 2, fruit: 3, willow: 3, lavender: 2, sunflower: 3, pumpkin: 3 };
+  each((c, x, y) => {
+    const p = c.plant; if (!p) return;
+    const needs = ['flower', 'fruit', 'lavender', 'sunflower', 'pumpkin'].includes(p.t);
+    const max = MAX[p.t] ?? 0;
+    // empty damp soil stays damp; a plant on it drinks that water tonight, then needs watering again.
+    // a stone ring holds water for a few nights
+    const damp = c.g === 'wet';
+    const ringWater = needs && !p.w && !damp && p.ring > 0;
+    if (ringWater) p.ring--;
+    if (!needs || p.w || damp || ringWater) {
+      p.wilt = false;
+      const wasMax = p.s >= max;
+      const grow = (needs || p.t === 'willow' ? 1 : 0) + p.ex + p.fx; p.fx = 0;
+      // a ripe pumpkin is picked automatically and the vine starts another
+      if (p.t === 'pumpkin' && wasMax) p.s = 1;
+      else if (p.s < max) p.s = Math.min(max, p.s + grow);
+      const nowMax = p.s >= max;
+      let n = 0;
+      if (p.t === 'pumpkin' && wasMax) n = 15;
+      if (p.t === 'lavender' && nowMax) n = 2;
+      if (p.t === 'sunflower' && nowMax) { if (!wasMax) { n = 8; p.bloom = 0; } else if (++p.bloom >= 3) { n = 8; p.bloom = 0; } }
+      if (p.t === 'flower' && nowMax) { if (!wasMax) { n = 5; p.bloom = 0; } else if (++p.bloom >= 2) { n = 5; p.bloom = 0; } }
+      if (p.t === 'fruit' && nowMax) n = 3;
+      if (p.t === 'cattail' && ++p.bloom >= 2) { n = 2; p.bloom = 0; }
+      if (p.t === 'lily') n = 1;
+      if (p.t === 'fern' && ++p.bloom >= 2) { n = 1; p.bloom = 0; }
+      if (p.t === 'willow' && wasMax) n = 1;
+      if (n) { n += p.graft + (bonus.get(key(x, y)) || 0); if (p.dbl) { n *= 2; p.dbl = false; } pay.push({ x, y, n }); }
+    }
+    // unwatered plants simply wait for water; nothing ever wilts or dies
+    p.w = false; p.ex = 0; p.survive = false;
+    if (damp) c.g = 'dry';
+  });
+  // dead patches (only from older saves) turn back into soil; wet soil never dries
+  each((c) => { if (c.g === 'dead') { if (c.deadAge >= 1) { c.g = 'dry'; c.compost = true; } else c.deadAge++; } });
+  // creatures: payouts and moving on
+  const moved = new Set();
+  each((c, x, y) => {
+    const k = c.crit; if (!k || moved.has(k)) return;
+    const m = k.pair ? 2 : 1; k.n++;
+    const leave = () => { c.crit = null; };
+    const moveTo = (spot) => { if (!spot) return leave(); c.crit = null; cell(spot[0], spot[1]).crit = k; moved.add(k); };
+    const near = (r, ok) => { const out = []; for (let b = y - r; b <= y + r; b++) for (let a = x - r; a <= x + r; a++) if (inGrid(a, b) && (a !== x || b !== y) && !cell(a, b).crit && ok(cell(a, b))) out.push([a, b]); return out; };
+    switch (k.k) {
+      case 'frog': if (isWatery(c)) pay.push({ x, y, n: 2 * m }); else moveTo(near(3, isWatery).sort((p, q) => Math.hypot(p[0] - x, p[1] - y) - Math.hypot(q[0] - x, q[1] - y))[0]); break;
+      case 'koi': if (waterOf(c) === 'pond') pay.push({ x, y, n: 3 * m }); else leave(); break;
+      case 'lizard': {
+        if (!['rock', 'boulder', 'stepstone'].includes(c.g)) { leave(); break; }
+        const n = around(x, y, N8).filter(([a, b]) => ROCKY.includes(cell(a, b).g)).length;
+        if (n) pay.push({ x, y, n: n * m }); break;
+      }
+      case 'snail': { const r = shuffle(near(1, (n) => n.g === 'rock')); if (r.length) { cell(r[0][0], r[0][1]).g = 'mossy'; moveTo(r[0]); } else leave(); break; }
+      case 'bird': {
+        if (stateOf(c) !== 'Fruit Tree') { leave(); break; }
+        pay.push({ x, y, n: m });
+        const spot = pick(near(2, isEmptySoil)); if (spot) plantIn(cell(spot[0], spot[1]), Math.random() < 0.7 ? 'flower' : 'fruit');
+        break;
+      }
+      case 'bee': if (stateOf(c) !== 'Flower Bush') leave(); break;
+      case 'ladybug': moveTo(pick(near(1, (n) => !!n.plant))); break;
+      case 'worm': if (k.n >= 3) leave(); else moveTo(pick(near(1, (n) => ['dry', 'wet', 'dead'].includes(n.g)))); break;
+      case 'dragonfly': if (waterOf(c) !== 'marsh') leave(); break;
+    }
+  });
+  return pay;
+}
+
+/* =========================================================
+   PAINTED SPRITES (canvas-drawn in the reference style)
+   ========================================================= */
+const INK = '#3b2a14';
+const TAU = Math.PI * 2;
+function mk(w = 256, h = 256) { const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'); g.lineJoin = 'round'; g.lineCap = 'round'; return { c, g }; }
+function blobs(g, list, fill, hi, ow = 7) {
+  g.fillStyle = INK; for (const [x, y, r] of list) { g.beginPath(); g.arc(x, y, r + ow, 0, TAU); g.fill(); }
+  g.fillStyle = fill; for (const [x, y, r] of list) { g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill(); }
+  if (hi) { g.fillStyle = hi; for (const [x, y, r] of list) { g.beginPath(); g.arc(x - r * 0.28, y - r * 0.32, r * 0.5, 0, TAU); g.fill(); } }
+}
+function shape(g, pts, fill, ow = 6) { g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.closePath(); g.fillStyle = fill; g.fill(); if (ow) { g.lineWidth = ow; g.strokeStyle = INK; g.stroke(); } }
+function ell(g, x, y, rx, ry, fill, ow = 6, rot = 0) { g.beginPath(); g.ellipse(x, y, rx, ry, rot, 0, TAU); g.fillStyle = fill; g.fill(); if (ow) { g.lineWidth = ow; g.strokeStyle = INK; g.stroke(); } }
+function line(g, pts, w, col, ow = 5) {
+  const path = () => { g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); };
+  if (ow) { path(); g.lineWidth = w + ow * 2; g.strokeStyle = INK; g.stroke(); }
+  path(); g.lineWidth = w; g.strokeStyle = col; g.stroke();
+}
+function shadow(g, x, y, rx, ry) { g.beginPath(); g.ellipse(x, y, rx, ry, 0, 0, TAU); g.fillStyle = 'rgba(59,42,20,.22)'; g.fill(); }
+const curve = (x0, y0, cx, cy, x1, y1, n = 10) => Array.from({ length: n + 1 }, (_, i) => { const t = i / n, u = 1 - t; return [u * u * x0 + 2 * u * t * cx + t * t * x1, u * u * y0 + 2 * u * t * cy + t * t * y1]; });
+
+const LEAF = '#7cb342', LEAF_HI = '#a8d26a', LEAF_DK = '#5e9a35', BARK = '#8a5a2b', PEACH = '#f2a65a', STONE = '#a89f8d', STONE_HI = '#cbc3b1';
+function rockShape(g, s = 1, ox = 0) {
+  const P = (pts) => pts.map(([x, y]) => [128 + (x - 128) * s + ox, 236 - (236 - y) * s]);
+  shadow(g, 128 + ox, 232, 74 * s, 12 * s);
+  shape(g, P([[58, 232], [64, 194], [96, 166], [142, 158], [182, 174], [202, 208], [198, 232]]), STONE);
+  shape(g, P([[86, 196], [102, 178], [138, 172], [122, 192]]), STONE_HI, 0);
+  line(g, P([[150, 190], [162, 206], [158, 220]]), 3, '#857b69', 0);
+}
+const moss = (g, list) => blobs(g, list, LEAF, LEAF_HI, 5);
+
+const SPR = {
+  seedF: { h: 0.5, draw(g) { shadow(g, 128, 238, 46, 10); ell(g, 128, 226, 40, 15, '#a7774a'); ell(g, 128, 214, 11, 8, '#e5c25e', 5); line(g, [[128, 206], [128, 190]], 5, LEAF_DK); ell(g, 140, 190, 10, 6, LEAF, 4, -0.5); } },
+  seedR: { h: 0.5, draw(g) { shadow(g, 128, 238, 46, 10); ell(g, 128, 226, 40, 15, '#a7774a'); ell(g, 128, 212, 14, 11, '#8a4b2a', 5); line(g, [[130, 202], [132, 188]], 5, LEAF_DK); ell(g, 144, 188, 11, 6, LEAF, 4, -0.5); } },
+  shootF: { h: 0.8, draw(g) { shadow(g, 128, 238, 40, 9); ell(g, 128, 230, 32, 10, '#a7774a'); line(g, [[128, 228], [128, 150]], 7, LEAF_DK); ell(g, 102, 172, 26, 11, LEAF, 5, 0.5); ell(g, 154, 160, 28, 11, LEAF, 5, -0.5); ell(g, 128, 146, 9, 9, PEACH, 4); } },
+  shootR: { h: 0.85, draw(g) { shadow(g, 128, 238, 40, 9); ell(g, 128, 230, 32, 10, '#a7774a'); line(g, [[128, 228], [128, 132]], 8, BARK); ell(g, 100, 178, 26, 11, LEAF, 5, 0.5); ell(g, 156, 162, 28, 11, LEAF, 5, -0.5); ell(g, 128, 126, 12, 22, LEAF, 5); } },
+  bush: { h: 1.1, draw(g) {
+    shadow(g, 128, 238, 74, 12); line(g, [[128, 236], [128, 200]], 8, BARK);
+    blobs(g, [[86, 182, 40], [170, 182, 40], [128, 148, 50], [106, 206, 32], [150, 206, 32], [128, 182, 44]], LEAF, LEAF_HI);
+    for (const [x, y] of [[92, 166], [150, 132], [172, 190], [116, 204], [134, 112], [104, 128], [150, 176]]) { ell(g, x, y, 13, 13, PEACH, 5); ell(g, x, y, 5, 5, '#fff1c7', 0); }
+  } },
+  bushBerry: { h: 1.1, draw(g) { SPR.bush.draw(g); for (const [x, y] of [[124, 160], [84, 196], [162, 150], [140, 214]]) { ell(g, x, y, 9, 9, '#7d3fa8', 4); } } },
+  sapling: { h: 1.2, draw(g) { shadow(g, 128, 238, 50, 10); shape(g, [[120, 238], [136, 238], [133, 140], [123, 140]], BARK); line(g, [[130, 176], [156, 156]], 5, BARK, 4); blobs(g, [[128, 112, 36], [100, 130, 26], [156, 130, 26], [160, 152, 18]], LEAF, LEAF_HI); } },
+  tree: { h: 1.75, draw(g) {
+    shadow(g, 128, 240, 78, 12);
+    shape(g, [[108, 240], [148, 240], [140, 160], [166, 132], [154, 126], [134, 144], [124, 144], [102, 124], [92, 132], [116, 160]], BARK);
+    blobs(g, [[128, 74, 50], [78, 104, 40], [180, 104, 40], [98, 138, 34], [158, 138, 34], [128, 116, 46]], LEAF_DK, '#8fbf4a');
+    for (const [x, y] of [[88, 94], [152, 66], [172, 124], [116, 134], [138, 100], [100, 56]]) { ell(g, x, y, 10, 10, '#e8613c', 4); ell(g, x - 3, y - 3, 3, 3, '#ffd2b8', 0); }
+  } },
+  willow: { h: 1.6, draw(g) {
+    shadow(g, 128, 240, 80, 12); shape(g, [[112, 240], [144, 240], [138, 120], [118, 120]], BARK);
+    blobs(g, [[128, 84, 46], [84, 104, 34], [172, 104, 34], [128, 112, 40]], '#9cc46a', '#c3df92');
+    for (let i = 0; i < 9; i++) { const x = 70 + i * 14; line(g, [[x, 110], [x - 4, 150 + (i % 3) * 22]], 6, '#8fb85a', 4); }
+  } },
+  cattail: { h: 1.0, draw(g) {
+    shadow(g, 128, 236, 50, 9);
+    for (const [x, top, lean] of [[104, 120, -10], [130, 92, 4], [154, 128, 12]]) { line(g, [[x, 236], [x + lean, top]], 5, '#6a8f3a'); ell(g, x + lean * 0.85, top + 26, 9, 24, '#7a4a24', 5); }
+    ell(g, 90, 200, 6, 34, '#7fa84a', 4, -0.4); ell(g, 168, 196, 6, 36, '#7fa84a', 4, 0.4);
+  } },
+  lily: { h: 0.75, draw(g) {
+    ell(g, 128, 214, 76, 26, '#6fae45'); line(g, [[128, 214], [180, 204]], 3, '#4f8a2e', 0);
+    for (let i = 0; i < 6; i++) { const a = i / 6 * TAU; ell(g, 128 + Math.cos(a) * 14, 196 + Math.sin(a) * 6, 12, 8, '#f6a6b8', 4, a); }
+    ell(g, 128, 194, 7, 5, '#ffe27a', 0);
+  } },
+  fern: { h: 0.95, draw(g) {
+    shadow(g, 128, 236, 60, 10);
+    for (const [ex, ey] of [[50, 150], [92, 104], [128, 92], [166, 104], [208, 150]]) {
+      const pts = curve(128, 234, (128 + ex) / 2, ey + 40, ex, ey);
+      line(g, pts, 5, LEAF_DK, 4);
+      pts.slice(2, -1).forEach(([x, y], i) => { ell(g, x - 9, y, 9, 5, LEAF, 3, 0.6); ell(g, x + 9, y, 9, 5, LEAF, 3, -0.6); });
+    }
+  } },
+  rock: { h: 0.75, draw(g) { rockShape(g); } },
+  mossy: { h: 0.75, draw(g) { rockShape(g); moss(g, [[96, 172, 16], [124, 162, 20], [156, 166, 16], [180, 182, 12]]); } },
+  spring: { h: 1.0, draw(g) {
+    rockShape(g, 0.9); moss(g, [[104, 182, 14], [150, 176, 14]]);
+    line(g, [[128, 176], [128, 120]], 10, '#8fd0f0', 4);
+    for (const [x, y, r] of [[104, 130, 8], [154, 124, 7], [128, 104, 10], [92, 164, 6], [166, 160, 6]]) ell(g, x, y, r, r * 1.2, '#62b0d8', 4);
+  } },
+  boulder: { h: 1.0, draw(g) { shadow(g, 128, 234, 92, 14); shape(g, [[34, 234], [42, 182], [86, 132], [148, 120], [200, 148], [224, 198], [220, 234]], STONE); shape(g, [[70, 180], [96, 150], [148, 140], [118, 168]], STONE_HI, 0); line(g, [[170, 168], [184, 196], [176, 220]], 4, '#857b69', 0); } },
+  boulderM: { h: 1.0, draw(g) { SPR.boulder.draw(g); moss(g, [[78, 150, 18], [112, 132, 22], [150, 128, 20], [186, 146, 16], [206, 172, 12]]); } },
+  // seed catalogue
+  sprig: { h: 0.75, draw(g) {
+    shadow(g, 128, 238, 40, 9); ell(g, 128, 230, 32, 10, '#a7774a');
+    for (const [x, top] of [[108, 170], [128, 150], [148, 170]]) { line(g, [[128, 228], [x, top + 20]], 4, LEAF_DK, 3); ell(g, x, top + 10, 6, 14, '#9b7fd1', 4); }
+  } },
+  lavender: { h: 1.0, draw(g) {
+    shadow(g, 128, 238, 64, 10);
+    for (const [x, top] of [[84, 118], [106, 92], [128, 80], [150, 92], [172, 118], [116, 128], [140, 126]]) { line(g, [[128 + (x - 128) * 0.35, 228], [x, top + 36]], 4, LEAF_DK, 3); ell(g, x, top + 16, 9, 24, '#9b7fd1', 4); ell(g, x - 2, top + 9, 3, 8, '#cdbaf2', 0); }
+    blobs(g, [[104, 222, 16], [152, 222, 16], [128, 216, 20]], LEAF, LEAF_HI, 5);
+  } },
+  sunStem: { h: 1.25, draw(g) {
+    shadow(g, 128, 238, 40, 9); line(g, [[128, 236], [128, 96]], 8, LEAF_DK);
+    ell(g, 100, 186, 28, 12, LEAF, 5, 0.5); ell(g, 156, 156, 28, 12, LEAF, 5, -0.5); ell(g, 128, 88, 16, 18, '#8fbf4a', 5);
+  } },
+  sunflower: { h: 1.75, draw(g) {
+    shadow(g, 128, 240, 46, 9); line(g, [[128, 238], [128, 110]], 9, LEAF_DK);
+    ell(g, 98, 200, 30, 12, LEAF, 5, 0.5); ell(g, 158, 172, 30, 12, LEAF, 5, -0.5);
+    for (let i = 0; i < 12; i++) { const a = i / 12 * TAU; ell(g, 128 + Math.cos(a) * 40, 70 + Math.sin(a) * 40, 20, 10, '#f4c430', 4, a); }
+    ell(g, 128, 70, 32, 32, '#7a4a24', 5); for (const [x, y] of [[118, 60], [138, 64], [124, 80], [142, 82], [112, 74]]) ell(g, x, y, 3, 3, '#4a2c14', 0);
+  } },
+  vine: { h: 0.7, draw(g) {
+    shadow(g, 128, 238, 70, 10); line(g, curve(56, 222, 128, 196, 200, 222, 12), 6, LEAF_DK, 4);
+    blobs(g, [[82, 206, 22], [128, 196, 26], [176, 206, 22]], LEAF, LEAF_HI, 5); line(g, curve(200, 216, 224, 196, 208, 184, 8), 3, LEAF_DK, 0);
+  } },
+  vineFlower: { h: 0.75, draw(g) { SPR.vine.draw(g); for (const [x, y] of [[104, 186], [156, 182]]) { for (let i = 0; i < 5; i++) { const a = i / 5 * TAU; ell(g, x + Math.cos(a) * 8, y + Math.sin(a) * 8, 8, 6, '#ffd54a', 3, a); } ell(g, x, y, 5, 5, '#e8902a', 0); } } },
+  pumpkin: { h: 0.9, draw(g) {
+    SPR.vine.draw(g);
+    for (const [x, rx] of [[96, 34], [160, 34], [128, 40]]) ell(g, x, 184, rx, 44, '#ee8a2a', 6);
+    for (const x of [108, 148]) line(g, [[x, 148], [x, 222]], 3, '#c96a14', 0);
+    shape(g, [[122, 146], [134, 146], [138, 120], [126, 116]], '#6a8f3a', 5); ell(g, 104, 166, 8, 14, '#ffb867', 0, 0.3);
+  } },
+  // locked land: overgrown meadow
+  meadowA: { h: 0.6, draw(g) {
+    for (const [x, lean, hgt] of [[70, -14, 70], [90, -6, 96], [110, 4, 80], [128, -2, 110], [146, 8, 88], [166, 14, 100], [186, 18, 72]]) shape(g, [[x - 9, 236], [x + 9, 236], [x + lean, 236 - hgt]], x % 20 ? '#7fb04a' : '#94c45a', 4);
+    ell(g, 102, 150, 9, 9, '#fff4cf', 4); ell(g, 102, 150, 3, 3, '#f4c430', 0);
+  } },
+  meadowB: { h: 0.55, draw(g) {
+    for (const [x, lean, hgt] of [[80, -10, 80], [100, -2, 100], [122, 6, 76], [144, -6, 104], [168, 12, 84]]) shape(g, [[x - 9, 236], [x + 9, 236], [x + lean, 236 - hgt]], x % 20 ? '#94c45a' : '#7fb04a', 4);
+    ell(g, 160, 140, 8, 8, '#f6a6b8', 4); ell(g, 160, 140, 3, 3, '#ffe27a', 0);
+  } },
+  // decorations
+  d_lantern: { h: 1.15, draw(g) {
+    shadow(g, 128, 238, 30, 8); line(g, [[128, 236], [128, 110]], 8, '#5a4a3a');
+    ell(g, 128, 100, 36, 36, 'rgba(255,214,110,.35)', 0);
+    shape(g, [[108, 78], [148, 78], [142, 124], [114, 124]], '#ffe08a', 5); line(g, [[128, 84], [128, 118]], 3, '#f2a65a', 0);
+    shape(g, [[100, 80], [128, 58], [156, 80]], '#5a4a3a', 5);
+  } },
+  d_bench: { h: 0.75, draw(g) {
+    shadow(g, 128, 238, 84, 10);
+    for (const x of [62, 194]) line(g, [[x, 236], [x, 172]], 8, '#6e4a26', 4);
+    shape(g, [[44, 168], [212, 168], [212, 186], [44, 186]], '#b07a42', 5); shape(g, [[52, 118], [204, 118], [204, 152], [52, 152]], '#b07a42', 5);
+    line(g, [[60, 132], [196, 132]], 3, '#8a5a2b', 0);
+  } },
+  d_gnome: { h: 0.85, draw(g) {
+    shadow(g, 128, 238, 40, 9); ell(g, 128, 206, 34, 30, '#4f86c6'); shape(g, [[100, 196], [156, 196], [140, 236], [116, 236]], '#4f86c6', 5);
+    ell(g, 128, 156, 24, 22, '#f2c7a0'); shape(g, [[104, 166], [152, 166], [128, 214]], '#f6f1e4', 5);
+    shape(g, [[98, 150], [158, 150], [134, 70]], '#e0442f', 5); ell(g, 128, 168, 7, 6, '#e89a84', 0);
+  } },
+  d_logs: { h: 0.75, draw(g) {
+    shadow(g, 128, 238, 86, 11);
+    for (const [x, y] of [[84, 206], [132, 206], [180, 206], [108, 166], [156, 166]]) { ell(g, x, y, 26, 24, '#a0703c', 5); ell(g, x, y, 15, 13, '#d9b27a', 3); ell(g, x, y, 5, 4, '#a0703c', 0); }
+    moss(g, [[96, 146, 10], [168, 150, 8]]);
+  } },
+  d_birdbath: { h: 1.0, draw(g) {
+    shadow(g, 128, 238, 50, 9); shape(g, [[104, 236], [152, 236], [140, 210], [116, 210]], STONE, 5); shape(g, [[118, 212], [138, 212], [134, 140], [122, 140]], STONE, 5);
+    ell(g, 128, 130, 66, 22, STONE, 6); ell(g, 128, 124, 52, 13, '#62b0d8', 0); ell(g, 112, 122, 14, 4, '#bfe6fa', 0);
+  } },
+  d_beehive: { h: 1.0, draw(g) {
+    shadow(g, 128, 238, 56, 9); line(g, [[128, 236], [128, 206]], 10, '#6e4a26', 4); shape(g, [[84, 208], [172, 208], [172, 220], [84, 220]], '#8a5a2b', 4);
+    for (const [y, rx, ry] of [[190, 58, 20], [160, 52, 20], [132, 42, 18], [108, 28, 14]]) ell(g, 128, y, rx, ry, '#e6b84a', 5);
+    ell(g, 128, 196, 12, 9, INK, 0); ell(g, 168, 120, 7, 5, '#f4c430', 3);
+  } },
+};
+const CRIT = {
+  frog(g) { shadow(g, 64, 118, 40, 8); ell(g, 64, 94, 36, 24, '#6cbf3d'); ell(g, 64, 102, 20, 12, '#b7e07e', 0); for (const x of [46, 82]) { ell(g, x, 68, 12, 12, '#6cbf3d', 5); ell(g, x, 68, 7, 7, '#fff', 0); ell(g, x + 1, 69, 3.5, 3.5, INK, 0); } g.beginPath(); g.arc(64, 88, 12, 0.2, Math.PI - 0.2); g.lineWidth = 4; g.strokeStyle = INK; g.stroke(); },
+  ladybug(g) { shadow(g, 64, 116, 36, 8); ell(g, 64, 56, 16, 12, INK, 0); ell(g, 64, 86, 32, 28, '#e0442f'); line(g, [[64, 60], [64, 112]], 3, INK, 0); for (const [x, y] of [[48, 76], [80, 76], [50, 98], [78, 98]]) ell(g, x, y, 6, 6, INK, 0); ell(g, 56, 72, 7, 4, '#ff9c8a', 0, -0.4); },
+  bird(g) { shadow(g, 64, 118, 34, 8); line(g, [[56, 104], [54, 118]], 3, '#c9733a', 2); line(g, [[72, 104], [74, 118]], 3, '#c9733a', 2); ell(g, 64, 76, 32, 30, '#5aa7d6'); ell(g, 70, 90, 18, 14, '#cfe9f7', 0); ell(g, 44, 82, 16, 11, '#3f86b8', 4, 0.5); shape(g, [[92, 70], [112, 76], [92, 82]], '#f2a65a', 4); ell(g, 80, 66, 4, 4, INK, 0); },
+  bee(g) {
+    ell(g, 50, 52, 16, 12, 'rgba(255,255,255,.85)', 4, -0.5); ell(g, 76, 50, 16, 12, 'rgba(255,255,255,.85)', 4, 0.5);
+    ell(g, 64, 82, 32, 22, '#f4c430'); g.save(); g.beginPath(); g.ellipse(64, 82, 29, 19, 0, 0, TAU); g.clip(); g.fillStyle = INK; for (const x of [52, 70]) g.fillRect(x, 50, 8, 60); g.restore(); ell(g, 92, 80, 4, 4, INK, 0);
+  },
+  worm(g) { shadow(g, 64, 116, 40, 7); line(g, curve(24, 104, 64, 60, 100, 100, 14), 15, '#f19bb0', 5); ell(g, 96, 92, 3, 3, INK, 0); },
+  dragonfly(g) { for (const [x, y, r] of [[48, 54, -0.3], [80, 54, 0.3], [46, 82, 0.3], [82, 82, -0.3]]) ell(g, x, y, 24, 9, 'rgba(216,241,255,.85)', 3, r); line(g, [[64, 40], [64, 116]], 8, '#3f8fd6', 4); ell(g, 64, 38, 9, 9, '#3f8fd6', 4); },
+  koi(g) { shape(g, [[24, 76], [6, 60], [10, 92]], '#f08a2c', 4); ell(g, 66, 76, 42, 20, '#f08a2c', 5); ell(g, 70, 70, 14, 8, '#fff', 0); ell(g, 46, 82, 9, 6, '#fff', 0); ell(g, 96, 70, 3.5, 3.5, INK, 0); },
+  lizard(g) { shadow(g, 64, 112, 44, 7); line(g, curve(30, 98, 10, 90, 18, 70, 8), 9, '#7bbf5a', 4); for (const [x, y] of [[48, 104], [80, 104], [48, 74], [80, 74]]) line(g, [[64, y - 8], [x, y]], 6, '#7bbf5a', 4); ell(g, 64, 88, 30, 13, '#7bbf5a', 5); ell(g, 100, 84, 14, 11, '#7bbf5a', 5); ell(g, 104, 80, 3, 3, INK, 0); },
+  snail(g) { shadow(g, 64, 116, 42, 7); ell(g, 66, 104, 44, 12, '#b9b0a0'); line(g, [[96, 96], [104, 70]], 4, '#b9b0a0', 3); ell(g, 104, 68, 4, 4, INK, 0); ell(g, 60, 74, 30, 30, '#d9a253'); g.beginPath(); for (let i = 0; i < 40; i++) { const a = i * 0.32, r = 3 + i * 0.55; g.lineTo(60 + Math.cos(a) * r, 74 + Math.sin(a) * r); } g.lineWidth = 4; g.strokeStyle = INK; g.stroke(); },
+};
+const ICON = {
+  Water(g) { g.beginPath(); g.moveTo(64, 12); g.bezierCurveTo(70, 34, 100, 58, 100, 82); g.arc(64, 82, 36, 0, Math.PI); g.bezierCurveTo(28, 58, 58, 34, 64, 12); g.closePath(); g.fillStyle = '#4fb3e8'; g.fill(); g.lineWidth = 6; g.strokeStyle = INK; g.stroke(); ell(g, 50, 82, 8, 14, '#bfe6fa', 0, 0.3); },
+  Seed(g) { ell(g, 64, 76, 24, 36, '#e5c25e', 6, 0.55); line(g, [[54, 84], [76, 62]], 3, '#b8932f', 0); line(g, [[80, 46], [94, 24]], 5, LEAF_DK, 4); ell(g, 104, 26, 12, 7, LEAF, 4, -0.5); },
+  'Fruit Seed'(g) { ell(g, 48, 78, 20, 30, '#a8622e', 6, 0.35); ell(g, 82, 72, 20, 30, '#8a4b2a', 6, -0.35); ell(g, 42, 68, 5, 9, '#d28b55', 0, 0.35); ell(g, 76, 62, 5, 9, '#b06a3c', 0, -0.35); },
+  Rock(g) { g.save(); g.translate(0, -36); g.scale(0.5, 0.5); rockShape(g); g.restore(); },
+  Fertiliser(g) { shape(g, [[34, 40], [94, 40], [104, 112], [24, 112]], '#c0392b'); shape(g, [[40, 40], [50, 20], [78, 20], [88, 40]], '#a83226'); line(g, [[44, 40], [84, 40]], 4, '#e8c26a', 3); ell(g, 64, 78, 20, 18, '#fff1c7', 4); ell(g, 64, 78, 7, 11, LEAF, 3, 0.5); },
+  Creature(g) { CRIT.ladybug(g); },
+  Lavender(g) { for (const [x, y, r] of [[44, 50, -0.35], [64, 36, 0], [84, 50, 0.35]]) { line(g, [[64, 116], [x, y + 22]], 5, LEAF_DK, 4); ell(g, x, y, 12, 26, '#9b7fd1', 5, r); ell(g, x - 3, y - 6, 3, 9, '#cdbaf2', 0, r); } },
+  Sunflower(g) { for (let i = 0; i < 12; i++) { const a = i / 12 * TAU; ell(g, 64 + Math.cos(a) * 34, 64 + Math.sin(a) * 34, 16, 9, '#f4c430', 4, a); } ell(g, 64, 64, 26, 26, '#7a4a24', 5); ell(g, 56, 56, 5, 5, '#a8703a', 0); },
+  Pumpkin(g) { for (const [x, rx] of [[42, 26], [86, 26], [64, 30]]) ell(g, x, 76, rx, 34, '#ee8a2a', 6); for (const x of [52, 76]) line(g, [[x, 48], [x, 106]], 3, '#c96a14', 0); shape(g, [[58, 46], [70, 46], [74, 20], [62, 16]], '#6a8f3a', 5); },
+};
+
+const texCache = new Map();
+function canvasTex(key, w, h, draw) {
+  if (texCache.has(key)) return texCache.get(key);
+  const { c, g } = mk(w, h); draw(g, c);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  t.userData.canvas = c; texCache.set(key, t); return t;
+}
+const iconURL = new Map();
+function faceIcon(face) {
+  if (!iconURL.has(face)) { const { c, g } = mk(128, 128); ICON[face](g); iconURL.set(face, c.toDataURL()); }
+  return iconURL.get(face);
+}
+
+/* ---------- ground tiles ---------- */
+function rng(seed) { return () => { seed |= 0; seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+// autotiling: wet soil, marsh and pond join with matching neighbours into one shape (dry plots stay separate so the grid reads)
+const JOINS = ['wet', 'marsh', 'pond', 'wild'];
+const groundOf = (c) => (c.locked ? 'wild' : c.g === 'stepstone' ? c.base : ROCKY.includes(c.g) ? 'dry' : c.g);
+// neighbour order matches the mask bits: N E S W NE SE SW NW (N is the row further up the screen)
+const MASK_DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0], [1, -1], [1, 1], [-1, 1], [-1, -1]];
+function joinMask(c, x, y) {
+  const k = groundOf(c); if (!JOINS.includes(k)) return 0;
+  let m = 0;
+  MASK_DIRS.forEach(([a, b], bit) => { if (inBounds(x + a, y + b) && groundOf(cell(x + a, y + b)) === k) m |= 1 << bit; });
+  // a diagonal only counts when both edges beside it are joined too
+  [[4, 0, 1], [5, 2, 1], [6, 2, 3], [7, 0, 3]].forEach(([d, p, q]) => { if (!(m >> p & 1 && m >> q & 1)) m &= ~(1 << d); });
+  return m;
+}
+// traces a tile outline: inset I on open edges, round corners of radius r, edges past the canvas where joined,
+// and a concave notch of radius I where two joined edges meet an unjoined diagonal
+function autoPath(g, m, I, r) {
+  const S = 128, E = 12, bit = (b) => (m >> b & 1) === 1;
+  const corners = [[0, 0, 1, 1, 3, 0, 7, false], [S, 0, -1, 1, 1, 0, 4, true], [S, S, -1, -1, 1, 2, 5, false], [0, S, 1, -1, 3, 2, 6, true]];
+  g.beginPath(); let first = true;
+  for (const [cx, cy, ux, uy, hb, vb, db, rev] of corners) {
+    const h = bit(hb), v = bit(vb), d = bit(db);
+    // points in corner-local coords, traced from the vertical edge to the horizontal one
+    let pts;
+    if (!h && !v) pts = Array.from({ length: 7 }, (_, i) => { const a = Math.PI + (i / 6) * Math.PI / 2; return [I + r + Math.cos(a) * r, I + r + Math.sin(a) * r]; });
+    else if (h && !v) pts = [[-E, I]];
+    else if (!h && v) pts = [[I, -E]];
+    else if (d) pts = [[-E, -E]];
+    else pts = [[-E, I], ...Array.from({ length: 7 }, (_, i) => { const a = Math.PI / 2 - (i / 6) * Math.PI / 2; return [Math.cos(a) * I, Math.sin(a) * I]; }), [I, -E]];
+    if (rev) pts.reverse();
+    for (const [px, py] of pts) { const X = cx + ux * px, Y = cy + uy * py; first ? g.moveTo(X, Y) : g.lineTo(X, Y); first = false; }
+  }
+  g.closePath();
+}
+function tileKey(c, i) {
+  const x = i % COLS, y = Math.floor(i / COLS), m = joinMask(c, x, y);
+  const g = c.locked ? 'wild' : ROCKY.includes(c.g) && c.g !== 'stepstone' ? 'dry' : c.g;
+  // joined ponds share ripples: draw them on every other cell
+  const ripple = (x + y) % 2 === 0 || !(m & 15) ? 'w' : '';
+  return [g, c.g === 'stepstone' ? c.base : '', c.fertile ? 'f' : '', c.compost ? 'c' : '', c.plant && c.plant.ring ? 'r' : '', i % 3, m, ripple].join('|');
+}
+function drawTile(key) {
+  const [g0, base, fert, comp, ring, v, mk0, ripple] = key.split('|');
+  const m = +mk0;
+  return canvasTex('tile:' + key, 128, 128, (g) => {
+    const R = rng(+v * 977 + g0.length * 31);
+    const ground = g0 === 'stepstone' ? base : g0;
+    const fill = { dry: '#e4cf9a', wet: '#9f7a4b', marsh: '#8b9a52', pond: '#5fb2dc', dead: '#bca783', wild: '#9cc75a' }[ground] || '#e4cf9a';
+    autoPath(g, m, 5, 19); g.fillStyle = 'rgba(59,42,20,.55)'; g.fill();
+    autoPath(g, m, 9, 15); g.fillStyle = fill; g.fill();
+    g.save(); autoPath(g, m, 9, 15); g.clip();
+    if (ground === 'wild') for (let i = 0; i < 14; i++) { const x = 4 + R() * 120, y = 8 + R() * 116; line(g, [[x - 4, y], [x - 1, y - 9]], 3, '#7fb04a', 0); line(g, [[x + 3, y], [x + 4, y - 8]], 3, '#7fb04a', 0); }
+    if (ground === 'dry') for (let i = 0; i < 18; i++) ell(g, 12 + R() * 104, 12 + R() * 104, 2 + R() * 3, 1.5 + R() * 2, '#cdb27a', 0);
+    if (ground === 'wet') { for (let i = 0; i < 10; i++) ell(g, 4 + R() * 120, 4 + R() * 120, 3 + R() * 4, 2 + R() * 2, '#83613a', 0); for (let i = 0; i < 4; i++) ell(g, 16 + R() * 96, 16 + R() * 96, 14 + R() * 10, 3, 'rgba(255,255,255,.28)', 0, -0.4); }
+    if (ground === 'marsh') { for (let i = 0; i < 4; i++) ell(g, 16 + R() * 96, 16 + R() * 96, 16 + R() * 10, 8 + R() * 5, '#5f9a9a', 0); for (let i = 0; i < 7; i++) { const x = 8 + R() * 112, y = 24 + R() * 96; line(g, [[x, y], [x + R() * 6 - 3, y - 14 - R() * 10]], 3, '#4f7a2a', 0); } }
+    if (ground === 'pond') {
+      autoPath(g, m, 26, 30); g.fillStyle = '#7cc6ea'; g.fill();
+      if (ripple) for (const r of [16, 30]) { g.beginPath(); g.ellipse(64 + R() * 8 - 4, 64, r, r * 0.6, 0, 0, TAU); g.lineWidth = 3; g.strokeStyle = 'rgba(255,255,255,.55)'; g.stroke(); }
+    }
+    if (ground === 'dead') for (let i = 0; i < 5; i++) { const x = 20 + R() * 88, y = 20 + R() * 88; line(g, [[x, y], [x + 12, y + 8], [x + 10, y + 22]], 3, '#7d6a4a', 0); }
+    if (comp) for (let i = 0; i < 16; i++) ell(g, 14 + R() * 100, 14 + R() * 100, 3 + R() * 2.5, 2.5 + R() * 2, '#4a3220', 0);
+    if (fert) for (let i = 0; i < 6; i++) { const x = 18 + R() * 92, y = 18 + R() * 92; line(g, [[x - 5, y], [x + 5, y]], 3, '#e8a23a', 0); line(g, [[x, y - 5], [x, y + 5]], 3, '#e8a23a', 0); }
+    g.restore();
+    if (g0 === 'stepstone') ell(g, 64, 66, 34, 24, STONE, 5);
+    if (ring) for (let i = 0; i < 10; i++) { const a = i / 10 * TAU; ell(g, 64 + Math.cos(a) * 44, 64 + Math.sin(a) * 44, 8, 6, STONE, 3); }
+  });
+}
+
+/* =========================================================
+   THREE + CANNON SETUP
+   ========================================================= */
+const canvas = document.getElementById('scene');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#b4d465');
+const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 200);
+const camTarget = new THREE.Vector3(0, 0, (BOUND.zMin + BOUND.zMax) / 2);
+const camDir = new THREE.Vector3(0, Math.sin(TILT), Math.cos(TILT));
+
+scene.add(new THREE.HemisphereLight('#fffbe8', '#9c8a5a', 1.5));
+const sun = new THREE.DirectionalLight('#fff6dc', 2.2); sun.position.set(3, 10, 6); scene.add(sun);
+
+const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -24, 0) });
+world.broadphase = new CANNON.SAPBroadphase(world);
+world.allowSleep = false;
+const mDie = new CANNON.Material('die'), mGround = new CANNON.Material('ground'), mWall = new CANNON.Material('wall');
+world.addContactMaterial(new CANNON.ContactMaterial(mDie, mGround, { friction: 0.42, restitution: 0.3 }));
+world.addContactMaterial(new CANNON.ContactMaterial(mDie, mWall, { friction: 0.12, restitution: 0.55 }));
+world.addContactMaterial(new CANNON.ContactMaterial(mDie, mDie, { friction: 0.2, restitution: 0.42 }));
+
+// board
+const basic = (color) => new THREE.MeshBasicMaterial({ color });
+{
+  const floor = new CANNON.Body({ mass: 0, material: mGround, shape: new CANNON.Plane() });
+  floor.quaternion.setFromEuler(-Math.PI / 2, 0, 0); world.addBody(floor);
+  const W = BOUND.x * 2, D = BOUND.zMax - BOUND.zMin, cz = (BOUND.zMax + BOUND.zMin) / 2;
+  const wall = (x, z, hx, hz) => { const b = new CANNON.Body({ mass: 0, material: mWall, shape: new CANNON.Box(new CANNON.Vec3(hx, 4, hz)) }); b.position.set(x, 4, z); world.addBody(b); };
+  wall(-BOUND.x - 0.5, cz, 0.5, D / 2 + 1); wall(BOUND.x + 0.5, cz, 0.5, D / 2 + 1);
+  wall(0, BOUND.zMin - 0.5, W / 2 + 1, 0.5); wall(0, BOUND.zMax + 0.5, W / 2 + 1, 0.5);
+  // visuals: rim, floor, launch pad
+  const rimMat = basic('#7a6a3e'), rimTop = basic('#94824f');
+  const rimH = 0.5, rimT = 0.45;
+  const addRim = (x, z, w, d) => {
+    const m = new THREE.Mesh(new RoundedBoxGeometry(w, rimH, d, 2, 0.12), [rimMat, rimMat, rimTop, rimMat, rimMat, rimMat]);
+    m.position.set(x, rimH / 2 - 0.05, z); scene.add(m);
+  };
+  addRim(-BOUND.x - rimT / 2, cz, rimT, D + rimT * 2); addRim(BOUND.x + rimT / 2, cz, rimT, D + rimT * 2);
+  addRim(0, BOUND.zMin - rimT / 2, W + rimT * 2, rimT); addRim(0, BOUND.zMax + rimT / 2, W + rimT * 2, rimT);
+  const base = new THREE.Mesh(new THREE.PlaneGeometry(W, D), basic('#d3bb85'));
+  base.rotation.x = -Math.PI / 2; base.position.set(0, 0, cz); scene.add(base);
+  const pad = new THREE.Mesh(new THREE.PlaneGeometry(W, BOUND.zMax - GRID_END), basic('#dcc795'));
+  pad.rotation.x = -Math.PI / 2; pad.position.set(0, 0.002, (BOUND.zMax + GRID_END) / 2); scene.add(pad);
+  const arc = new THREE.Mesh(new THREE.RingGeometry(1.75, 1.85, 48, 1, 0, Math.PI), basic('#b9a26c'));
+  arc.rotation.x = -Math.PI / 2; arc.position.set(0, 0.004, LAUNCH.z + 0.6); scene.add(arc);
+  const edge = new THREE.Mesh(new THREE.PlaneGeometry(W, 0.06), basic('#b9a26c'));
+  edge.rotation.x = -Math.PI / 2; edge.position.set(0, 0.004, GRID_END + 0.05); scene.add(edge);
+}
+
+/* ---------- cell views ---------- */
+const views = [];
+const SPRITE_SCALE = 1.55;
+const cellPos = (x, y) => new THREE.Vector3(X0 + x + 0.5, 0, Z0 + (y + 0.5) * CZ);
+const spriteMats = new Map();
+function spriteMat(texKey, draw, size, tint) {
+  const k = texKey + (tint ? ':w' : '');
+  if (!spriteMats.has(k)) {
+    const tex = canvasTex('spr:' + texKey, size, size, draw);
+    const m = new THREE.SpriteMaterial({ map: tex, alphaTest: 0.5, color: tint ? '#c8b07a' : '#ffffff' });
+    spriteMats.set(k, m);
+  }
+  return spriteMats.get(k);
+}
+function makeSprite(texKey, def, tint) {
+  const s = new THREE.Sprite(spriteMat(texKey, def.draw, 256, tint));
+  const h = def.h * SPRITE_SCALE;
+  s.center.set(0.5, 0.07); s.scale.set(h, h * (tint ? 0.86 : 1), 1);
+  return s;
+}
+function popIn(obj) { const sx = obj.scale.x, sy = obj.scale.y; obj.scale.set(sx * 0.2, sy * 0.2, 1); tween(0.35, (k) => { const e = 1 + 2.2 * Math.pow(k - 1, 3) + 1.2 * Math.pow(k - 1, 2); obj.scale.set(sx * e, sy * e, 1); }); }
+// tiles fill the whole cell so joined edges meet; the gap between plots is drawn into the texture
+const tileGeo = new THREE.PlaneGeometry(1, CZ);
+for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
+  const tile = new THREE.Mesh(tileGeo, new THREE.MeshBasicMaterial({ transparent: true }));
+  tile.rotation.x = -Math.PI / 2; tile.position.copy(cellPos(x, y)).setY(0.01); scene.add(tile);
+  views.push({ tile, tileKey: '', obj: null, objKey: '', plant: null, plantKey: '', crits: [], critKey: '' });
+}
+function plantSpriteKey(p) {
+  if (p.t === 'flower') return [p.s === 0 ? 'seedF' : p.s === 1 ? 'shootF' : p.graft >= 2 ? 'bushBerry' : 'bush'];
+  if (p.t === 'fruit') return [['seedR', 'shootR', 'sapling', 'tree'][p.s]];
+  if (p.t === 'willow') return [p.s >= 3 ? 'willow' : 'sapling'];
+  if (p.t === 'lavender') return [['seedF', 'sprig', 'lavender'][p.s]];
+  if (p.t === 'sunflower') return [['seedF', 'shootF', 'sunStem', 'sunflower'][p.s]];
+  if (p.t === 'pumpkin') return [['seedR', 'vine', 'vineFlower', 'pumpkin'][p.s]];
+  return [p.t];
+}
+function refreshTile(i) {
+  const v = views[i], tk = tileKey(S.grid[i], i);
+  if (tk !== v.tileKey) { v.tile.material.map = drawTile(tk); v.tile.material.needsUpdate = true; v.tileKey = tk; }
+}
+function refreshCell(i, animate) {
+  const c = S.grid[i], v = views[i], x = i % COLS, y = Math.floor(i / COLS), pos = cellPos(x, y);
+  // neighbours re-join around this cell too
+  refreshTile(i); around(x, y, N8).forEach(([a, b]) => refreshTile(b * COLS + a));
+  const ok = c.locked ? ((x * 7 + y * 3) % 3 ? 'meadowA' : 'meadowB') : c.decor ? 'd_' + c.decor
+    : ['rock', 'mossy', 'spring'].includes(c.g) ? c.g : c.g === 'boulder' ? (c.mossyB ? 'boulderM' : 'boulder') : '';
+  if (ok !== v.objKey) {
+    if (v.obj) scene.remove(v.obj); v.obj = null;
+    if (ok) { v.obj = makeSprite(ok, SPR[ok]); v.obj.position.copy(pos).add(new THREE.Vector3(0, 0, -0.05)); scene.add(v.obj); if (animate) popIn(v.obj); }
+    v.objKey = ok;
+  }
+  const pk = c.plant ? plantSpriteKey(c.plant)[0] + (c.plant.wilt ? ':w' : '') : '';
+  if (pk !== v.plantKey) {
+    if (v.plant) scene.remove(v.plant); v.plant = null;
+    if (pk) {
+      const id = pk.split(':')[0];
+      v.plant = makeSprite(id, SPR[id], c.plant.wilt);
+      const lift = ok ? (ok.startsWith('boulder') ? 0.42 : 0.3) : 0;
+      v.plant.position.copy(pos).add(new THREE.Vector3(0, lift, 0.06)); scene.add(v.plant);
+      if (animate) popIn(v.plant);
+    }
+    v.plantKey = pk;
+  }
+  const ck = c.crit ? c.crit.k + (c.crit.pair ? '2' : '') : '';
+  if (ck !== v.critKey) {
+    v.crits.forEach((s) => scene.remove(s)); v.crits = [];
+    if (c.crit) {
+      const n = c.crit.pair ? 2 : 1;
+      for (let j = 0; j < n; j++) {
+        const s = new THREE.Sprite(spriteMat('crit:' + c.crit.k, (g) => { g.scale(2, 2); CRIT[c.crit.k](g); }, 256));
+        s.center.set(0.5, 0.06); s.scale.set(0.72, 0.72, 1);
+        s.position.copy(pos).add(new THREE.Vector3(0.22 - j * 0.4, 0.02, 0.3)); s.userData.phase = Math.random() * TAU; s.userData.baseY = s.position.y;
+        scene.add(s); v.crits.push(s); if (animate) popIn(s);
+      }
+    }
+    v.critKey = ck;
+  }
+}
+// rocks are scenery only: dice roll over them so they can land on rock cells
+const refreshAll = (animate) => { for (let i = 0; i < S.grid.length; i++) refreshCell(i, animate); };
+// unbought blocks are solid to dice, like the rim, so every throw lands on land you own
+const landBodies = new Map();
+function syncLandBodies() {
+  for (let b = 0; b < BCOLS * BROWS; b++) {
+    const locked = !S.land[b];
+    if (locked && !landBodies.has(b)) {
+      const bx = b % BCOLS, by = Math.floor(b / BCOLS);
+      const body = new CANNON.Body({ mass: 0, material: mWall, shape: new CANNON.Box(new CANNON.Vec3(BW / 2, 4, BH * CZ / 2)) });
+      body.position.set(X0 + (bx + 0.5) * BW, 4, Z0 + (by + 0.5) * BH * CZ); world.addBody(body); landBodies.set(b, body);
+    }
+    if (!locked && landBodies.has(b)) { world.removeBody(landBodies.get(b)); landBodies.delete(b); }
+  }
+}
+
+/* ---------- dice ---------- */
+const DIE = 0.76, HALF = DIE / 2;
+const NORMALS = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+const gradient = (() => { const d = new Uint8Array([90, 170, 255]); const t = new THREE.DataTexture(d, 3, 1, THREE.RedFormat); t.minFilter = t.magFilter = THREE.NearestFilter; t.needsUpdate = true; return t; })();
+const dieGeo = new RoundedBoxGeometry(DIE, DIE, DIE, 4, 0.1);
+const dieMat = new THREE.MeshToonMaterial({ color: '#f6ead0', gradientMap: gradient });
+const hullMat = new THREE.MeshBasicMaterial({ color: INK, side: THREE.BackSide });
+const decalGeo = new THREE.PlaneGeometry(DIE * 0.74, DIE * 0.74);
+const decalMats = new Map();
+function decalMat(face) {
+  if (!decalMats.has(face)) {
+    const tex = canvasTex('decal:' + face, 128, 128, (g) => { g.save(); g.translate(64, 64); g.scale(0.82, 0.82); g.translate(-64, -64); ICON[face](g); g.restore(); });
+    decalMats.set(face, new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.3, polygonOffset: true, polygonOffsetFactor: -2 }));
+  }
+  return decalMats.get(face);
+}
+const shadowTex = canvasTex('shadow', 64, 64, (g) => { const gr = g.createRadialGradient(32, 32, 2, 32, 32, 30); gr.addColorStop(0, 'rgba(59,42,20,.45)'); gr.addColorStop(1, 'rgba(59,42,20,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); });
+function buildDieMesh(faces) {
+  const grp = new THREE.Group();
+  grp.add(new THREE.Mesh(dieGeo, dieMat));
+  const hull = new THREE.Mesh(dieGeo, hullMat); hull.scale.setScalar(1.09); grp.add(hull);
+  NORMALS.forEach((n, i) => {
+    const d = new THREE.Mesh(decalGeo, decalMat(faces[i]));
+    const nv = new THREE.Vector3(...n);
+    d.position.copy(nv).multiplyScalar(HALF + 0.003);
+    d.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), nv);
+    grp.add(d);
+  });
+  return grp;
+}
+const markerGeo = (() => { const s = new THREE.Shape(); s.moveTo(-0.5, -0.5); s.lineTo(0.5, -0.5); s.lineTo(0.5, 0.5); s.lineTo(-0.5, 0.5); s.closePath(); const h = new THREE.Path(); h.moveTo(-0.42, -0.42); h.lineTo(-0.42, 0.42); h.lineTo(0.42, 0.42); h.lineTo(0.42, -0.42); h.closePath(); s.holes.push(h); return new THREE.ShapeGeometry(s); })();
+
+let dice = [];
+let preview = null;
+function makePreview() {
+  if (preview) scene.remove(preview.mesh);
+  const mesh = buildDieMesh(S.die);
+  mesh.position.copy(LAUNCH);
+  mesh.quaternion.setFromEuler(new THREE.Euler(Math.random() * TAU, Math.random() * TAU, Math.random() * TAU));
+  scene.add(mesh);
+  preview = { mesh };
+}
+function throwDie(dir, power) {
+  const mesh = preview.mesh; preview = null;
+  const body = new CANNON.Body({ mass: 1, material: mDie, shape: new CANNON.Box(new CANNON.Vec3(HALF, HALF, HALF)), linearDamping: 0.08, angularDamping: 0.08 });
+  body.position.set(LAUNCH.x, LAUNCH.y, LAUNCH.z);
+  body.quaternion.set(mesh.quaternion.x, mesh.quaternion.y, mesh.quaternion.z, mesh.quaternion.w);
+  launch(body, dir, power);
+  world.addBody(body);
+  const shadowM = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 1.1), new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false }));
+  shadowM.rotation.x = -Math.PI / 2; scene.add(shadowM);
+  const marker = new THREE.Mesh(markerGeo, new THREE.MeshBasicMaterial({ color: '#fff8e6', transparent: true, opacity: 0.9, depthWrite: false }));
+  marker.rotation.x = -Math.PI / 2; marker.scale.set(1, CZ, 1); marker.visible = false; scene.add(marker);
+  const d = { id: dice.length, mesh, body, shadowM, marker, settled: false, still: 0, age: 0, face: null, cell: null, lost: false, faces: S.die.slice() };
+  body.addEventListener('collide', (e) => {
+    const v = Math.abs(e.contact.getImpactVelocityAlongNormal());
+    if (v > 1.4) { thud(v); puff(body.position, v); }
+  });
+  dice.push(d);
+  vibrate(12);
+}
+
+const TUNE = { base: 4.3, gain: 14, up: 1.6, upGain: 2.2, spin: 6, spinGain: 9 };
+function launch(body, dir, power) {
+  const speed = TUNE.base + power * TUNE.gain;
+  body.velocity.set(dir.x * speed, TUNE.up + power * TUNE.upGain, dir.z * speed);
+  // spin mostly around the axis perpendicular to travel, so the die tumbles forward
+  const side = new THREE.Vector3(-dir.z, 0, dir.x);
+  const ax = side.multiplyScalar(-1).add(new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(1.2)).normalize().multiplyScalar(TUNE.spin + power * TUNE.spinGain);
+  body.angularVelocity.set(ax.x, ax.y, ax.z);
+}
+function readDie(d) {
+  const q = d.body.quaternion; let best = -2, bi = 0; const v = new CANNON.Vec3();
+  NORMALS.forEach((n, i) => { q.vmult(new CANNON.Vec3(...n), v); if (v.y > best) { best = v.y; bi = i; } });
+  return { i: bi, dot: best };
+}
+function settle(d) {
+  const { i, dot } = readDie(d);
+  const p = d.body.position;
+  let x = Math.floor(p.x - X0), y = Math.floor((p.z - Z0) / CZ);
+  const wasSettled = d.face !== null;
+  // No throw is ever lost: a leaning die gets hopped until a face is up,
+  // and a die that stops in the throwing area rolls on up onto the plot.
+  d.nudges = d.nudges || 0;
+  const hop = (vz) => {
+    d.nudges++; d.still = 0;
+    d.body.velocity.set((Math.random() - 0.5) * 1.5, 2.4, vz);
+    d.body.angularVelocity.set((Math.random() - 0.5) * 7, 0, (Math.random() - 0.5) * 7);
+  };
+  if (dot < 0.9 && d.nudges < 6) return hop((Math.random() - 0.5) * 1.5);
+  if (y >= ROWS && d.nudges < 6) return hop(-(3.2 + (p.z - GRID_END) * 1.7));
+  x = Math.max(0, Math.min(COLS - 1, x)); y = Math.max(0, Math.min(ROWS - 1, y));
+  if (cell(x, y).locked) {
+    // resting against the meadow's edge: use the nearest patch you own
+    let bd = 1e9;
+    S.grid.forEach((n, j) => { if (n.locked) return; const a = j % COLS, b = Math.floor(j / COLS), dd = Math.hypot(cellPos(a, b).x - p.x, cellPos(a, b).z - p.z); if (dd < bd) { bd = dd; x = a; y = b; } });
+  }
+  d.settled = true;
+  d.face = d.faces[i]; d.cell = [x, y];
+  d.marker.position.copy(cellPos(x, y)).setY(0.015); d.marker.visible = true;
+  const st = stateOf(cell(x, y));
+  toast(faceIcon(d.face), `<b>${d.face}</b> on ${st}${wasSettled ? ' (knocked)' : ''}<br>${resultText(d.face, cell(x, y))}`);
+  d.nudges = 0;
+  vibrate(8);
+  renderPips();
+}
+function loseDie(d, title, why) {
+  d.lost = true; d.marker.visible = false;
+  toast(null, `<b>${title}</b> ${why}`);
+  renderPips();
+  const m = d.mesh;
+  tween(0.6, (k) => { m.scale.setScalar(1 - k * 0.9); d.shadowM.material.opacity = 1 - k; }, () => { removeDie(d); });
+}
+function removeDie(d) { world.removeBody(d.body); scene.remove(d.mesh); scene.remove(d.shadowM); scene.remove(d.marker); d.gone = true; }
+
+/* ---------- puffs + sound ---------- */
+const puffMat = new THREE.SpriteMaterial({ map: canvasTex('puff', 64, 64, (g) => { const gr = g.createRadialGradient(32, 32, 4, 32, 32, 30); gr.addColorStop(0, 'rgba(250,240,210,.95)'); gr.addColorStop(1, 'rgba(250,240,210,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); }), transparent: true, depthWrite: false });
+function puff(p, v) {
+  const n = Math.min(5, 1 + Math.floor(v / 3));
+  for (let i = 0; i < n; i++) {
+    const s = new THREE.Sprite(puffMat.clone()); s.position.set(p.x + (Math.random() - 0.5) * 0.5, 0.1, p.z + (Math.random() - 0.5) * 0.5); scene.add(s);
+    const sz = 0.3 + Math.random() * 0.3 + v * 0.03;
+    tween(0.5 + Math.random() * 0.3, (k) => { s.scale.setScalar(sz * (0.5 + k)); s.material.opacity = 1 - k; s.position.y = 0.1 + k * 0.3; }, () => scene.remove(s));
+  }
+}
+let audio = null, noiseBuf = null;
+function ensureAudio() { if (audio) return; try { audio = new (window.AudioContext || window.webkitAudioContext)(); noiseBuf = audio.createBuffer(1, audio.sampleRate * 0.2, audio.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 3); } catch (e) { audio = null; } }
+let lastThud = 0;
+function thud(v) {
+  if (!audio || performance.now() - lastThud < 40) return; lastThud = performance.now();
+  const s = audio.createBufferSource(); s.buffer = noiseBuf; const f = audio.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 500 + v * 60; const gn = audio.createGain(); gn.gain.value = Math.min(0.9, v / 14);
+  s.connect(f).connect(gn).connect(audio.destination); s.start();
+}
+function ding(delay = 0) {
+  if (!audio) return; const t = audio.currentTime + delay; const o = audio.createOscillator(); const gn = audio.createGain();
+  o.frequency.setValueAtTime(880, t); o.frequency.exponentialRampToValueAtTime(1320, t + 0.08); gn.gain.setValueAtTime(0.0001, t); gn.gain.exponentialRampToValueAtTime(0.18, t + 0.01); gn.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+  o.connect(gn).connect(audio.destination); o.start(t); o.stop(t + 0.4);
+}
+const vibrate = (ms) => { try { if (navigator.userActivation?.hasBeenActive) navigator.vibrate?.(ms); } catch (e) {} };
+
+/* ---------- tweens ---------- */
+let tweens = [];
+function tween(dur, fn, done) { tweens.push({ t: 0, dur, fn, done }); }
+const wait = (s) => new Promise((r) => tween(s, () => {}, r));
+
+/* =========================================================
+   UI
+   ========================================================= */
+const $ = (id) => document.getElementById(id);
+$('coinIcon').src = canvasTex('coin', 64, 64, (g) => { ell(g, 32, 32, 25, 25, '#f4c430', 5); ell(g, 32, 32, 14, 14, '#ffe27a', 0); line(g, [[32, 22], [32, 42]], 4, '#c99a1c', 0); }).userData.canvas.toDataURL();
+function renderHUD() {
+  $('day').textContent = S.day; $('coins').textContent = S.coins;
+  renderPips();
+}
+
+/* ---------- tabs: Dice, Seeds, Land, Decor ---------- */
+// spending happens between throws; land and decor taps on the garden replace aiming while those tabs are open
+let tab = 'dice', swapSlot = null, armed = null, placing = null;
+const canShop = () => phase === 'aim';
+const availableFaces = () => [...FACES, ...S.unlocked];
+const decorIcons = new Map();
+function decorIcon(k) {
+  if (!decorIcons.has(k)) { const { c, g } = mk(256, 256); SPR['d_' + k].draw(g); decorIcons.set(k, c.toDataURL()); }
+  return decorIcons.get(k);
+}
+function chip(icon, label, sub, { sel = false, disabled = false, cls = '', aria = label, onclick }) {
+  const b = document.createElement('button'); b.className = 'chip' + (sel ? ' sel' : '') + (cls ? ' ' + cls : '');
+  b.disabled = disabled; b.setAttribute('aria-label', aria);
+  b.innerHTML = `<div class="face">${icon ? `<img src="${icon}" alt="">` : ''}</div><span>${label}</span>` + (sub !== null && sub !== undefined ? `<small>${sub}</small>` : '');
+  b.onclick = onclick; return b;
+}
+function note(html) { const p = document.createElement('p'); p.className = 'note'; p.innerHTML = html; return p; }
+function setTab(t) {
+  cancelPlacing(); tab = t; swapSlot = null; armed = null;
+  renderBar(); renderTags(); updateHint();
+}
+function updateHint() {
+  const h = $('hint');
+  if (tab === 'land') { h.textContent = 'Tap a sign to buy that plot'; h.style.opacity = 1; }
+  else if (tab === 'decor') { h.textContent = placing ? `Tap empty soil to place the ${DECOR[placing.key].name.toLowerCase()}` : 'Pick a decoration, or tap one to move it'; h.style.opacity = 1; }
+  else { h.textContent = 'Drag back from the die and let go'; h.style.opacity = dice.length ? 0 : 1; }
+}
+function renderBar() {
+  if (!canShop() && (tab === 'land' || tab === 'decor')) { cancelPlacing(); tab = 'dice'; renderTags(); updateHint(); }
+  const tabs = $('tabs'); tabs.innerHTML = '';
+  for (const [k, label] of [['dice', 'Dice'], ['seeds', 'Seeds'], ['land', 'Land'], ['decor', 'Decor']]) {
+    const b = document.createElement('button'); b.className = 'tab'; b.id = 'tab-' + k; b.textContent = label;
+    b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', tab === k);
+    b.disabled = k !== 'dice' && !canShop();
+    b.onclick = () => { if (tab !== k) setTab(k); };
+    tabs.appendChild(b);
+  }
+  const panel = $('panel'); panel.innerHTML = '';
+  if (tab === 'dice' && swapSlot === null) {
+    S.die.forEach((f, i) => panel.appendChild(chip(faceIcon(f), f, null, { aria: `Face ${i + 1}: ${f}. Tap to swap it.`, onclick: () => {
+      if (!canShop()) return toast(faceIcon(f), `<b>${f}</b> ${FACE_TIP[f]}`, 4200);
+      swapSlot = i; renderBar(); toast(faceIcon(f), `Pick a new face to replace <b>${f}</b>.`);
+    } })));
+  } else if (tab === 'dice') {
+    panel.appendChild(chip(null, 'Back', null, { aria: 'Keep this face', onclick: () => { swapSlot = null; renderBar(); } }));
+    availableFaces().filter((f) => f !== S.die[swapSlot]).forEach((f) => panel.appendChild(chip(faceIcon(f), f, PRICE[f], {
+      disabled: S.coins < PRICE[f], aria: `Swap in ${f} for ${PRICE[f]} coins`, onclick: () => {
+        S.coins -= PRICE[f]; S.die[swapSlot] = f; swapSlot = null;
+        if (preview) makePreview();
+        bumpCoins(); renderBar(); save(); toast(faceIcon(f), `<b>${f}</b> is on your die. ${FACE_TIP[f]}`, 3600);
+      } })));
+  } else if (tab === 'seeds') {
+    for (const [f, sp] of Object.entries(SPECIES)) {
+      const own = S.unlocked.includes(f), arm = armed === f;
+      panel.appendChild(chip(faceIcon(f), f, own ? 'Owned' : arm ? `Buy ${sp.unlock}?` : sp.unlock, {
+        cls: own ? 'owned' : '', sel: arm, disabled: !own && S.coins < sp.unlock, aria: own ? `${f}, unlocked` : `Unlock ${f} for ${sp.unlock} coins`, onclick: () => {
+          if (own) return toast(faceIcon(f), `<b>${f}</b> ${FACE_TIP[f]} Add it to your die in the Dice tab.`, 4200);
+          if (!canShop()) return;
+          if (!arm) { armed = f; renderBar(); return toast(faceIcon(f), `<b>${f}</b> ${FACE_TIP[f]} Tap again to unlock it.`, 4200); }
+          S.coins -= sp.unlock; S.unlocked.push(f); armed = null;
+          bumpCoins(); renderBar(); save(); toast(faceIcon(f), `<b>${f}</b> unlocked! Swap it onto your die in the Dice tab.`, 3600);
+        } }));
+    }
+  } else if (tab === 'land') {
+    const any = S.land.some((o, b) => buyable(b));
+    panel.appendChild(note(any ? `Tap a sign on the meadow to buy that plot. Next plot: ${landPrice()} coins.` : 'You own the whole garden!'));
+  } else if (tab === 'decor') {
+    for (const [k, d] of Object.entries(DECOR)) {
+      const sel = placing && placing.key === k && placing.from === null;
+      panel.appendChild(chip(decorIcon(k), d.name, d.price, { sel, disabled: S.coins < d.price && !sel, aria: `${d.name}, ${d.price} coins. ${d.tip}`, onclick: () => {
+        if (sel) { cancelPlacing(); renderBar(); updateHint(); return; }
+        cancelPlacing(); placing = { key: k, from: null };
+        renderBar(); updateHint(); toast(decorIcon(k), `<b>${d.name}</b> ${d.tip} Tap empty soil to place it.`, 4200);
+      } }));
+    }
+  }
+}
+function cancelPlacing() {
+  // a decoration picked up to move goes back where it was
+  if (placing && placing.from !== null) { S.grid[placing.from].decor = placing.key; refreshCell(placing.from, false); }
+  placing = null;
+}
+function tapDecor(p) {
+  const x = Math.floor(p.x - X0), y = Math.floor((p.z - Z0) / CZ);
+  if (!inGrid(x, y)) return;
+  const i = y * COLS + x, c = cell(x, y);
+  if (!placing) {
+    if (!c.decor) return;
+    placing = { key: c.decor, from: i }; c.decor = null; refreshCell(i, false);
+    renderBar(); updateHint(); return;
+  }
+  const d = DECOR[placing.key];
+  if (c.decor || c.plant || !(c.g === 'dry' || c.g === 'wet')) return toast(decorIcon(placing.key), 'Decorations go on an empty patch of soil.');
+  if (placing.from === null) { if (S.coins < d.price) return toast(decorIcon(placing.key), 'Not enough coins for that one yet.'); S.coins -= d.price; bumpCoins(); }
+  c.decor = placing.key; placing = null;
+  refreshCell(i, true); thud(4); renderBar(); updateHint(); save();
+}
+function renderTags() {
+  const el = $('tags'); el.innerHTML = '';
+  if (tab !== 'land' || !canShop()) return;
+  const price = landPrice();
+  for (let b = 0; b < S.land.length; b++) {
+    if (!buyable(b)) continue;
+    const bx = b % BCOLS, by = Math.floor(b / BCOLS);
+    const v = new THREE.Vector3(X0 + (bx + 0.5) * BW, 0.3, Z0 + (by + 0.5) * BH * CZ).project(camera);
+    const t = document.createElement('button'); const arm = armed === 'land' + b;
+    t.className = 'tag' + (arm ? ' sel' : '') + (S.coins < price ? ' poor' : '');
+    t.innerHTML = `<img src="${$('coinIcon').src}" alt="">${arm ? `Buy for ${price}?` : price}`;
+    t.setAttribute('aria-label', `Buy this plot for ${price} coins`);
+    t.style.left = ((v.x + 1) / 2 * innerWidth) + 'px'; t.style.top = ((1 - v.y) / 2 * innerHeight) + 'px';
+    t.onclick = () => {
+      if (S.coins < price) return toast($('coinIcon').src, `This plot costs ${price} coins. Keep growing!`);
+      if (!arm) { armed = 'land' + b; return renderTags(); }
+      S.coins -= price; S.land[b] = true; armed = null;
+      syncLand(); syncLandBodies();
+      for (let y = by * BH; y < (by + 1) * BH; y++) for (let x = bx * BW; x < (bx + 1) * BW; x++) refreshCell(y * COLS + x, true);
+      bumpCoins(); renderBar(); renderTags(); save(); ding();
+      toast($('coinIcon').src, '<b>New plot!</b> The meadow is cleared and ready to plant.');
+    };
+    el.appendChild(t);
+  }
+}
+function renderPips() {
+  const el = $('pips'); el.innerHTML = '';
+  for (let i = 0; i < THROWS; i++) {
+    const d = dice[i]; const s = document.createElement('span'); s.className = 'pip';
+    if (d && d.lost) { s.classList.add('lost'); s.textContent = '✕'; }
+    else if (d && d.face) s.innerHTML = `<img src="${faceIcon(d.face)}" alt="${d.face}">`;
+    else if (d) s.textContent = '…';
+    else if (i === dice.length && phase === 'aim') s.classList.add('next');
+    el.appendChild(s);
+  }
+  // pips change whenever the phase does, so the tabs follow along
+  renderBar(); renderTags();
+}
+let toastTimer = 0;
+function toast(icon, html, ms = 2800) {
+  const t = $('toast'); t.innerHTML = (icon ? `<img src="${icon}" alt="">` : '') + `<div>${html}</div>`; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), ms);
+}
+function bumpCoins(n = S.coins) { const p = $('coinPill'); p.classList.remove('bump'); void p.offsetWidth; p.classList.add('bump'); $('coins').textContent = n; }
+function floater(x, y, text) {
+  const v = cellPos(x, y).setY(0.9).project(camera);
+  const el = document.createElement('div'); el.className = 'floater'; el.textContent = text;
+  el.style.left = ((v.x + 1) / 2 * innerWidth) + 'px'; el.style.top = ((1 - v.y) / 2 * innerHeight) + 'px';
+  $('fx').appendChild(el); setTimeout(() => el.remove(), 1500);
+}
+$('helpBtn').onclick = () => { const r = $('rules'); r.innerHTML = availableFaces().map((f) => `<div class="rule"><img src="${faceIcon(f)}" alt=""><p><b>${f}.</b> ${FACE_TIP[f]}</p></div>`).join(''); $('resetBtn').textContent = 'Start a new garden'; $('resetBtn').dataset.armed = ''; $('help').hidden = false; };
+$('closeHelp').onclick = () => { $('help').hidden = true; };
+$('resetBtn').onclick = (e) => {
+  const b = e.currentTarget;
+  if (!b.dataset.armed) { b.dataset.armed = '1'; b.textContent = 'Tap again to clear this garden'; return; }
+  try { localStorage.removeItem(SAVE_KEY); } catch (err) {}
+  dice.forEach((d) => !d.gone && removeDie(d)); dice = [];
+  placing = null; S = newGame(); syncLand(); syncLandBodies(); $('help').hidden = true; refreshAll(false); setTab('dice'); startDay();
+};
+
+/* =========================================================
+   FLOW
+   ========================================================= */
+let phase = 'aim', allStill = 0;
+function startDay() {
+  dice.forEach((d) => !d.gone && removeDie(d)); dice = [];
+  phase = 'aim'; makePreview(); renderHUD(); updateHint(); save();
+}
+async function endDay() {
+  phase = 'dusk';
+  const live = dice.filter((d) => !d.lost && d.face && !d.gone);
+  // dice float away
+  live.forEach((d) => { world.removeBody(d.body); const y0 = d.mesh.position.y; tween(0.7, (k) => { d.mesh.position.y = y0 + k * 1.6; d.mesh.scale.setScalar(1 - k * 0.7); d.marker.material.opacity = 0.9 * (1 - k); d.shadowM.material.opacity = 1 - k; }, () => removeDie(d)); });
+  await wait(0.75);
+  live.sort((a, b) => ORDER.indexOf(a.face) - ORDER.indexOf(b.face) || a.id - b.id);
+  for (const d of live) {
+    touched = new Set();
+    applyFace(d.face, d.cell[0], d.cell[1]);
+    touched.forEach((i) => refreshCell(i, true));
+    await wait(0.28);
+  }
+  await wait(0.4);
+  phase = 'night';
+  $('nightText').textContent = `Night ${S.day}`; $('night').classList.add('on');
+  await wait(1.1);
+  const before = S.grid.map((c) => JSON.stringify([c.plant && c.plant.s, c.plant && c.plant.wilt, c.crit && c.crit.k, c.g]));
+  const pay = runNight();
+  S.grid.forEach((c, i) => { if (JSON.stringify([c.plant && c.plant.s, c.plant && c.plant.wilt, c.crit && c.crit.k, c.g]) !== before[i]) refreshCell(i, true); else refreshCell(i, false); });
+  $('night').classList.remove('on');
+  await wait(0.7);
+  // bank the harvest now; the counter catches up as each coin floater pops
+  const earned = pay.reduce((a, p) => a + p.n, 0);
+  let shown = S.coins; S.coins += earned;
+  pay.forEach((p, j) => setTimeout(() => { floater(p.x, p.y, '+' + p.n); shown += p.n; bumpCoins(shown); ding(); }, j * 160));
+  await wait(pay.length * 0.16 + 0.9);
+  bumpCoins();
+  // harvest is automatic: report it and roll straight into the next day
+  toast($('coinIcon').src, earned ? `<b>Night ${S.day} harvest:</b> +${earned} coins` : `<b>Night ${S.day}:</b> nothing to harvest yet`, 3400);
+  S.day++; startDay();
+}
+
+/* ---------- aiming input ---------- */
+const ray = new THREE.Raycaster(), groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+function groundAt(e) {
+  const r = canvas.getBoundingClientRect();
+  ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
+  const p = new THREE.Vector3(); return ray.ray.intersectPlane(groundPlane, p) ? p : null;
+}
+const aim = { on: false, start: null, dir: new THREE.Vector3(0, 0, -1), power: 0 };
+const arrow = new THREE.Group();
+{
+  const mat = new THREE.MeshBasicMaterial({ color: '#fff8e6', transparent: true, opacity: 0.95, depthWrite: false });
+  const shaft = new THREE.Mesh(new THREE.PlaneGeometry(0.16, 1), mat); shaft.rotation.x = -Math.PI / 2; shaft.position.z = -0.5; shaft.name = 'shaft';
+  const headShape = new THREE.Shape(); headShape.moveTo(-0.3, 0); headShape.lineTo(0.3, 0); headShape.lineTo(0, 0.45); headShape.closePath();
+  const head = new THREE.Mesh(new THREE.ShapeGeometry(headShape), mat); head.rotation.x = -Math.PI / 2; head.name = 'head';
+  arrow.add(shaft, head); arrow.position.set(LAUNCH.x, 0.03, LAUNCH.z); arrow.visible = false; scene.add(arrow);
+}
+function updateArrow() {
+  const len = 0.6 + aim.power * 3.2;
+  const shaft = arrow.getObjectByName('shaft'), head = arrow.getObjectByName('head');
+  shaft.scale.y = len; shaft.position.z = -len / 2 - 0.45; head.position.z = -len - 0.45;
+  arrow.rotation.y = Math.atan2(-aim.dir.x, -aim.dir.z);
+  shaft.material.color.setHSL(0.33 - aim.power * 0.27, 0.75, 0.7);
+}
+canvas.addEventListener('pointerdown', (e) => {
+  ensureAudio(); if (audio?.state === 'suspended') audio.resume();
+  if (phase !== 'aim') return;
+  if (tab === 'decor') { const p = groundAt(e); if (p) tapDecor(p); return; }
+  if (tab === 'land' || !preview) return;
+  const p = groundAt(e); if (!p) return;
+  armed = null; swapSlot = null;
+  aim.on = true; aim.start = p; aim.power = 0; canvas.setPointerCapture(e.pointerId);
+  $('hint').style.opacity = 0;
+});
+canvas.addEventListener('pointermove', (e) => {
+  if (!aim.on) return; const p = groundAt(e); if (!p) return;
+  const drag = p.clone().sub(aim.start); drag.y = 0;
+  const len = drag.length();
+  aim.power = Math.min(1, len / 4.2);
+  if (len > 0.05) {
+    let a = Math.atan2(-drag.x, drag.z); a = Math.max(-1.05, Math.min(1.05, a));
+    aim.dir.set(Math.sin(a), 0, -Math.cos(a));
+  }
+  arrow.visible = aim.power > 0.04; updateArrow();
+});
+const release = () => {
+  if (!aim.on) return; aim.on = false; arrow.visible = false;
+  if (aim.power < 0.08) return;
+  throwDie(aim.dir.clone(), aim.power); phase = 'roll'; allStill = 0; renderPips();
+};
+canvas.addEventListener('pointerup', release);
+canvas.addEventListener('pointercancel', () => { aim.on = false; arrow.visible = false; });
+
+/* ---------- camera fit ---------- */
+function fit() {
+  const W = innerWidth, H = innerHeight;
+  renderer.setSize(W, H, false);
+  camera.position.copy(camTarget).addScaledVector(camDir, 50); camera.lookAt(camTarget); camera.updateMatrixWorld();
+  let minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9; const v = new THREE.Vector3();
+  for (const x of [-BOUND.x - 0.5, BOUND.x + 0.5]) for (const z of [BOUND.zMin - 0.5, BOUND.zMax + 0.5]) for (const y of [0, 0.5]) {
+    v.set(x, y, z).applyMatrix4(camera.matrixWorldInverse); minX = Math.min(minX, v.x); maxX = Math.max(maxX, v.x); minY = Math.min(minY, v.y); maxY = Math.max(maxY, v.y);
+  }
+  // let tall trees in the back row poke into the top margin a little
+  const padTop = document.querySelector('.hud-top').offsetHeight + 4, padBot = $('bar').offsetHeight + 2;
+  const availW = W - 16, availH = H - padTop - padBot;
+  const scale = Math.min(availW / (maxX - minX), availH / (maxY - minY));
+  const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2, hw = W / scale / 2, hh = H / scale / 2, off = (padTop - padBot) / 2 / scale;
+  camera.left = cx - hw; camera.right = cx + hw; camera.top = cy + hh + off; camera.bottom = cy - hh + off; camera.updateProjectionMatrix();
+  // keep the hint just above the launcher
+  const lp = LAUNCH.clone().setZ(LAUNCH.z - 1.6).project(camera);
+  $('hint').style.bottom = 'auto'; $('hint').style.top = ((1 - lp.y) / 2 * H) + 'px';
+  renderTags();
+}
+addEventListener('resize', fit);
+
+/* ---------- main loop ---------- */
+const clock = new THREE.Clock();
+let simTime = 0;
+function loop() {
+  update(Math.min(clock.getDelta(), 0.05));
+  renderer.render(scene, camera);
+  requestAnimationFrame(loop);
+}
+function update(dt) {
+  simTime += dt; const t = simTime;
+  if (phase === 'aim' || phase === 'roll') world.step(1 / 60, dt, 6);
+  for (const d of dice) {
+    if (d.gone || phase === 'dusk') continue;
+    d.mesh.position.copy(d.body.position); d.mesh.quaternion.copy(d.body.quaternion);
+    d.shadowM.position.set(d.body.position.x, 0.006, d.body.position.z);
+    const h = Math.max(0, d.body.position.y - HALF); d.shadowM.scale.setScalar(1 + h * 0.4); d.shadowM.material.opacity = Math.max(0.15, 1 - h * 0.5);
+    if (d.lost) continue;
+    d.age += dt;
+    const sp = d.body.velocity.length(), sa = d.body.angularVelocity.length();
+    if (d.body.position.y < -2) { loseDie(d, 'Lost!', 'The die left the plot.'); continue; }
+    if (sp < 0.08 && sa < 0.2) { d.still += dt; if (!d.settled && d.still > 0.35) settle(d); }
+    else {
+      d.still = 0;
+      if (d.settled && sp > 0.6) { d.settled = false; d.marker.visible = false; }
+      if (!d.settled && d.age > 7 && sp < 0.4) { d.body.velocity.y += 2.5; d.body.angularVelocity.x += 4; d.age = 5; }
+    }
+  }
+  if (phase === 'roll') {
+    const busy = dice.some((d) => !d.gone && !d.lost && !d.settled) || dice.some((d) => d.lost && !d.gone);
+    allStill = busy ? 0 : allStill + dt;
+    if (allStill > 0.3) {
+      if (dice.length >= THROWS) endDay();
+      else { phase = 'aim'; makePreview(); renderPips(); }
+    }
+  }
+  if (preview) { preview.mesh.position.y = LAUNCH.y + Math.sin(t * 3) * 0.06; preview.mesh.rotation.y += dt * (aim.on ? 3 + aim.power * 10 : 0.8); }
+  for (const v of views) for (const s of v.crits) s.position.y = s.userData.baseY + Math.abs(Math.sin(t * 2.4 + s.userData.phase)) * 0.06;
+  const live = tweens; tweens = [];
+  const keep = live.filter((tw) => { tw.t += dt; const k = Math.min(1, tw.t / tw.dur); tw.fn(k); if (k >= 1) { tw.done && tw.done(); return false; } return true; });
+  tweens = keep.concat(tweens);
+}
+
+/* ---------- boot ---------- */
+function boot(data) {
+  S = (data && data.S) || load() || newGame();
+  S.pending = S.pending || [];
+  // gardens from before land plots keep the whole plot; catalogue starts empty
+  if (!S.land) S.land = Array.from({ length: BCOLS * BROWS }, () => true);
+  S.unlocked = S.unlocked || [];
+  syncLand(); syncLandBodies();
+  // older saves may hold wilted plants or dead patches from before the garden went cozy
+  S.grid.forEach((c) => { if (c.plant) c.plant.wilt = false; if (c.g === 'dead') { c.g = 'dry'; c.compost = true; } });
+  refreshAll(false); renderHUD(); fit(); startDay();
+  requestAnimationFrame(loop);
+}
+window.claude?.hot?.snapshot?.(() => ({ S }));
+window.claude?.hot?.ready ? window.claude.hot.ready(boot) : boot(window.claude?.hot?.data ?? {});
+
+// test hooks for playtesting
+window.GD = { get S() { return S; }, get phase() { return phase; }, get dice() { return dice; },
+  TUNE, rules: { applyFace, runNight, stateOf, newGame, newPlant, set S(v) { S = v; } }, refreshAll,
+  reach(power, trials = 6) {
+    const zs = [];
+    for (let i = 0; i < trials; i++) {
+      const b = new CANNON.Body({ mass: 1, material: mDie, shape: new CANNON.Box(new CANNON.Vec3(HALF, HALF, HALF)), linearDamping: 0.08, angularDamping: 0.08 });
+      b.position.set(LAUNCH.x, LAUNCH.y, LAUNCH.z); b.quaternion.setFromEuler(Math.random() * 6, Math.random() * 6, Math.random() * 6);
+      launch(b, new THREE.Vector3(0, 0, -1), power); world.addBody(b);
+      let t = 0; while (t < 8 && !(t > 0.5 && b.velocity.length() < 0.05 && b.angularVelocity.length() < 0.1)) { world.step(1 / 60); t += 1 / 60; }
+      zs.push(+b.position.z.toFixed(1)); world.removeBody(b);
+    }
+    return zs.sort((a, b) => a - b);
+  },
+  ff: async (sec = 1) => { for (let i = 0; i < sec * 60; i++) { update(1 / 60); if (i % 6 === 0) await Promise.resolve(); } renderer.render(scene, camera); return phase; },
+  throw: (angle = 0, power = 0.6) => { if (phase !== 'aim' || !preview) return false; ensureAudio(); throwDie(new THREE.Vector3(Math.sin(angle), 0, -Math.cos(angle)), power); phase = 'roll'; allStill = 0; renderPips(); return true; } };
+</script>
+
+</body></html>
