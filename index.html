@@ -206,7 +206,8 @@ const SPECIES = {
 // land: the plot is split into 4x3 blocks; you start with the bottom row and buy neighbouring blocks
 const BW = 4, BH = 3, BCOLS = COLS / BW, BROWS = ROWS / BH;
 const blockOf = (x, y) => Math.floor(y / BH) * BCOLS + Math.floor(x / BW);
-const START_LAND = [BCOLS * (BROWS - 1), BCOLS * (BROWS - 1) + 1];
+// start with the front half of the garden (the bottom two block rows)
+const START_LAND = Array.from({ length: BCOLS * BROWS / 2 }, (_, i) => BCOLS * BROWS / 2 + i);
 const LAND_PRICE = [20, 35, 55, 80, 110, 150];
 // decorations: bought and placed by hand on empty soil
 const DECOR = {
@@ -870,9 +871,11 @@ const basic = (color) => new THREE.MeshBasicMaterial({ color });
   const floor = new CANNON.Body({ mass: 0, material: mGround, shape: new CANNON.Plane() });
   floor.quaternion.setFromEuler(-Math.PI / 2, 0, 0); world.addBody(floor);
   const W = BOUND.x * 2, D = BOUND.zMax - BOUND.zMin, cz = (BOUND.zMax + BOUND.zMin) / 2;
-  const wall = (x, z, hx, hz) => { const b = new CANNON.Body({ mass: 0, material: mWall, shape: new CANNON.Box(new CANNON.Vec3(hx, 4, hz)) }); b.position.set(x, 4, z); world.addBody(b); };
-  wall(-BOUND.x - 0.5, cz, 0.5, D / 2 + 1); wall(BOUND.x + 0.5, cz, 0.5, D / 2 + 1);
-  wall(0, BOUND.zMin - 0.5, W / 2 + 1, 0.5); wall(0, BOUND.zMax + 0.5, W / 2 + 1, 0.5);
+  // thick, tall walls so fast dice can't tunnel through or hop over
+  const WT = 3, WH = 12;
+  const wall = (x, z, hx, hz) => { const b = new CANNON.Body({ mass: 0, material: mWall, shape: new CANNON.Box(new CANNON.Vec3(hx, WH, hz)) }); b.position.set(x, WH, z); world.addBody(b); };
+  wall(-BOUND.x - WT, cz, WT, D / 2 + WT * 2); wall(BOUND.x + WT, cz, WT, D / 2 + WT * 2);
+  wall(0, BOUND.zMin - WT, W / 2 + WT * 2, WT); wall(0, BOUND.zMax + WT, W / 2 + WT * 2, WT);
   // visuals: rim, floor, launch pad
   const rimMat = basic('#7a6a3e'), rimTop = basic('#94824f');
   const rimH = 0.5, rimT = 0.45;
@@ -1509,7 +1512,7 @@ function loop() {
 }
 function update(dt) {
   simTime += dt; const t = simTime;
-  if (phase === 'aim' || phase === 'roll') world.step(1 / 60, dt, 6);
+  if (phase === 'aim' || phase === 'roll') world.step(1 / 120, dt, 12);
   for (const d of dice) {
     if (d.gone || phase === 'dusk') continue;
     d.mesh.position.copy(d.body.position); d.mesh.quaternion.copy(d.body.quaternion);
@@ -1518,6 +1521,10 @@ function update(dt) {
     if (d.lost) continue;
     d.age += dt;
     const sp = d.body.velocity.length(), sa = d.body.angularVelocity.length();
+    // safety net: anything that still slips past a wall gets bounced back in
+    { const p = d.body.position, v = d.body.velocity, lim = BOUND.x - HALF;
+      if (p.x < -lim) { p.x = -lim; v.x = Math.abs(v.x) * 0.5; } else if (p.x > lim) { p.x = lim; v.x = -Math.abs(v.x) * 0.5; }
+      if (p.z < BOUND.zMin + HALF) { p.z = BOUND.zMin + HALF; v.z = Math.abs(v.z) * 0.5; } else if (p.z > BOUND.zMax - HALF) { p.z = BOUND.zMax - HALF; v.z = -Math.abs(v.z) * 0.5; } }
     if (d.body.position.y < -2) { loseDie(d, 'Lost!', 'The die left the plot.'); continue; }
     if (sp < 0.08 && sa < 0.2) { d.still += dt; if (!d.settled && d.still > 0.35) settle(d); }
     else {
