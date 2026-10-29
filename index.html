@@ -95,6 +95,13 @@ body { background: var(--grass); color: var(--ink); font-family: var(--font-body
 
 #fx { position: fixed; inset: 0; z-index: 7; pointer-events: none; }
 .floater { position: absolute; transform: translate(-50%, -50%); font-family: var(--font-display); font-weight: 800; font-size: 22px; color: #ffe27a; text-shadow: 0 2px 0 var(--ink), 0 0 2px var(--ink); animation: rise 1.4s ease-out forwards; white-space: nowrap; }
+.flycoin { position: absolute; left: 0; top: 0; width: 26px; height: 26px; pointer-events: none; filter: drop-shadow(0 2px 0 var(--ink)); will-change: transform; }
+/* buttons squish a little when pressed */
+.chip .face, .tab, .tag { transition: transform .08s ease-out, box-shadow .08s ease-out; }
+.chip:active:not(:disabled) .face { transform: scale(.9); box-shadow: 0 1px 0 var(--ink); }
+.tab:active:not(:disabled) { transform: scale(.92); }
+.tag:active { transform: translate(-50%, -50%) scale(.92); box-shadow: 0 1px 0 var(--ink); }
+@media (hover: hover) { .chip:hover:not(:disabled) .face { transform: scale(1.06); } .chip:active:not(:disabled) .face { transform: scale(.9); } }
 @keyframes rise { 0% { opacity: 0; transform: translate(-50%, -20%) scale(.6); } 15% { opacity: 1; transform: translate(-50%, -60%) scale(1.15); } 100% { opacity: 0; transform: translate(-50%, -260%) scale(1); } }
 
 .sheet-wrap { position: fixed; inset: 0; z-index: 8; background: rgba(59,42,20,.35); display: flex; align-items: flex-end; justify-content: center; }
@@ -945,7 +952,7 @@ function refreshCell(i, animate) {
       v.plant = makeSprite(id, SPR[id], c.plant.wilt);
       const lift = ok ? (ok.startsWith('boulder') ? 0.42 : 0.3) : 0;
       v.plant.position.copy(pos).add(new THREE.Vector3(0, lift, 0.06)); scene.add(v.plant);
-      if (animate) popIn(v.plant);
+      if (animate === 'grow') growPop(v.plant); else if (animate) popIn(v.plant);
     }
     v.plantKey = pk;
   }
@@ -1015,20 +1022,25 @@ const markerGeo = (() => { const s = new THREE.Shape(); s.moveTo(-0.5, -0.5); s.
 let dice = [];
 let preview = null;
 function makePreview() {
-  if (preview) scene.remove(preview.mesh);
+  if (preview) scene.remove(preview.rig);
   const mesh = buildDieMesh(S.die);
-  mesh.position.copy(LAUNCH);
   mesh.quaternion.setFromEuler(new THREE.Euler(Math.random() * TAU, Math.random() * TAU, Math.random() * TAU));
-  scene.add(mesh);
-  preview = { mesh };
+  // the rig never spins, so it can squash the die along the aim while the die itself turns inside it
+  const rig = new THREE.Group(); rig.position.copy(LAUNCH); rig.add(mesh); scene.add(rig);
+  preview = { mesh, rig };
 }
 function throwDie(dir, power) {
-  const mesh = preview.mesh; preview = null;
+  const { mesh, rig } = preview; preview = null;
+  const q = new THREE.Quaternion(); mesh.getWorldQuaternion(q);
+  scene.remove(rig); rig.remove(mesh); mesh.quaternion.copy(q); scene.add(mesh);
   const body = new CANNON.Body({ mass: 1, material: mDie, shape: new CANNON.Box(new CANNON.Vec3(HALF, HALF, HALF)), linearDamping: 0.08, angularDamping: 0.08 });
   body.position.set(LAUNCH.x, LAUNCH.y, LAUNCH.z);
-  body.quaternion.set(mesh.quaternion.x, mesh.quaternion.y, mesh.quaternion.z, mesh.quaternion.w);
+  body.quaternion.set(q.x, q.y, q.z, q.w);
   launch(body, dir, power);
   world.addBody(body);
+  // release: the die springs out of the sling with a little dust
+  tween(0.28, (k) => mesh.scale.setScalar(0.8 + 0.2 * easeBack(k)), () => mesh.scale.setScalar(1));
+  puff(LAUNCH, 2 + power * 4);
   const shadowM = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 1.1), new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false }));
   shadowM.rotation.x = -Math.PI / 2; scene.add(shadowM);
   const marker = new THREE.Mesh(markerGeo, new THREE.MeshBasicMaterial({ color: '#fff8e6', transparent: true, opacity: 0.9, depthWrite: false }));
@@ -1080,6 +1092,9 @@ function settle(d) {
   d.settled = true;
   d.face = d.faces[i]; d.cell = [x, y];
   d.marker.position.copy(cellPos(x, y)).setY(0.015); d.marker.visible = true;
+  // landing: squash along the die's up axis, a ring across the cell, then the marker pops in
+  squashDie(d, Math.floor(i / 2)); landRing(x, y);
+  tween(0.32, (k) => { const e = easeBack(k); d.marker.scale.set(e, e * CZ, 1); }, () => d.marker.scale.set(1, CZ, 1));
   const st = stateOf(cell(x, y));
   toast(faceIcon(d.face), `<b>${d.face}</b> on ${st}${wasSettled ? ' (knocked)' : ''}<br>${resultText(d.face, cell(x, y))}`);
   d.nudges = 0;
@@ -1105,6 +1120,53 @@ function puff(p, v) {
     tween(0.5 + Math.random() * 0.3, (k) => { s.scale.setScalar(sz * (0.5 + k)); s.material.opacity = 1 - k; s.position.y = 0.1 + k * 0.3; }, () => scene.remove(s));
   }
 }
+/* ---------- juice: squash, rings, growth pops, particle bursts ---------- */
+// overshooting ease: 0 → a little past 1 → 1
+const easeBack = (k) => 1 + 2.70158 * Math.pow(k - 1, 3) + 1.70158 * Math.pow(k - 1, 2);
+// a decaying spring: 1 at the start, wobbling down to 0
+const spring = (k, freq = 14, damp = 6) => Math.exp(-damp * k) * Math.cos(k * freq);
+// squash the die along whichever of its own axes points up, then let it spring back
+function squashDie(d, axis) {
+  const m = d.mesh;
+  tween(0.45, (k) => { const w = spring(k); const sq = 1 - 0.22 * w, bulge = 1 + 0.11 * w; m.scale.set(axis === 0 ? sq : bulge, axis === 1 ? sq : bulge, axis === 2 ? sq : bulge); }, () => m.scale.set(1, 1, 1));
+}
+const ringGeo = new THREE.RingGeometry(0.36, 0.46, 40);
+function landRing(x, y) {
+  const m = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: '#fff8e6', transparent: true, opacity: 0.85, depthWrite: false }));
+  m.rotation.x = -Math.PI / 2; m.position.copy(cellPos(x, y)).setY(0.02); scene.add(m);
+  tween(0.55, (k) => { const s = 0.5 + (1 - Math.pow(1 - k, 3)) * 0.9; m.scale.set(s, s * CZ, 1); m.material.opacity = 0.85 * (1 - k); }, () => { scene.remove(m); m.material.dispose(); });
+}
+// a plant that grew squashes down, then stretches up into its new stage
+function growPop(obj) {
+  const sx = obj.scale.x, sy = obj.scale.y;
+  tween(0.55, (k) => { const w = spring(k, 13, 5); obj.scale.set(sx * (1 + 0.2 * w), sy * (1 - 0.3 * w), 1); }, () => obj.scale.set(sx, sy, 1));
+}
+const BIT_ART = {
+  drop(g) { g.beginPath(); g.moveTo(32, 6); g.bezierCurveTo(36, 18, 52, 30, 52, 42); g.arc(32, 42, 20, 0, Math.PI); g.bezierCurveTo(12, 30, 28, 18, 32, 6); g.closePath(); g.fillStyle = '#4fb3e8'; g.fill(); g.lineWidth = 4; g.strokeStyle = INK; g.stroke(); ell(g, 26, 40, 5, 8, '#bfe6fa', 0, 0.3); },
+  leaf(g) { ell(g, 32, 32, 24, 11, LEAF, 4, -0.6); line(g, [[16, 42], [46, 22]], 2, LEAF_DK, 0); },
+  grit(g) { shape(g, [[12, 42], [20, 18], [44, 12], [54, 36], [34, 54]], STONE, 4); shape(g, [[22, 22], [40, 16], [32, 28]], STONE_HI, 0); },
+  spark(g) { const p = []; for (let i = 0; i < 8; i++) { const a = i / 8 * TAU - Math.PI / 2, r = i % 2 ? 9 : 26; p.push([32 + Math.cos(a) * r, 32 + Math.sin(a) * r]); } shape(g, p, '#ffe27a', 4); },
+  heart(g) { g.beginPath(); g.moveTo(32, 54); g.bezierCurveTo(6, 36, 8, 12, 24, 12); g.bezierCurveTo(30, 12, 32, 18, 32, 20); g.bezierCurveTo(32, 18, 34, 12, 40, 12); g.bezierCurveTo(56, 12, 58, 36, 32, 54); g.closePath(); g.fillStyle = '#f28ca0'; g.fill(); g.lineWidth = 4; g.strokeStyle = INK; g.stroke(); },
+};
+const bitMats = {};
+const bitMat = (k) => bitMats[k] || (bitMats[k] = new THREE.SpriteMaterial({ map: canvasTex('bit:' + k, 64, 64, BIT_ART[k]), transparent: true, depthWrite: false }));
+const FACE_BITS = { Water: 'drop', Seed: 'leaf', 'Fruit Seed': 'leaf', Lavender: 'leaf', Sunflower: 'leaf', Pumpkin: 'leaf', Rock: 'grit', Fertiliser: 'spark', Creature: 'heart' };
+// little painted bits that hop out of a cell and fall back with gravity
+function burst(kind, x, y, n = 8, power = 1) {
+  const p = cellPos(x, y);
+  for (let i = 0; i < n; i++) {
+    const s = new THREE.Sprite(bitMat(kind).clone());
+    const a = Math.random() * TAU, sp = (0.5 + Math.random() * 0.9) * power;
+    const vx = Math.cos(a) * sp, vz = Math.sin(a) * sp * 0.7, vy = 2.4 + Math.random() * 1.6;
+    const sz = 0.17 + Math.random() * 0.12, r0 = Math.random() * TAU, spin = (Math.random() - 0.5) * 8, life = 0.6 + Math.random() * 0.3;
+    s.position.set(p.x, 0.25, p.z); s.scale.setScalar(sz); scene.add(s);
+    tween(life, (k) => {
+      const t = k * life;
+      s.position.set(p.x + vx * t, Math.max(0.05, 0.25 + vy * t - 5 * t * t), p.z + vz * t);
+      s.material.rotation = r0 + spin * t; s.material.opacity = k < 0.6 ? 1 : (1 - k) / 0.4; s.scale.setScalar(sz * (1 - 0.4 * k));
+    }, () => { scene.remove(s); s.material.dispose(); });
+  }
+}
 let audio = null, noiseBuf = null;
 function ensureAudio() { if (audio) return; try { audio = new (window.AudioContext || window.webkitAudioContext)(); noiseBuf = audio.createBuffer(1, audio.sampleRate * 0.2, audio.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 3); } catch (e) { audio = null; } }
 let lastThud = 0;
@@ -1113,9 +1175,12 @@ function thud(v) {
   const s = audio.createBufferSource(); s.buffer = noiseBuf; const f = audio.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 500 + v * 60; const gn = audio.createGain(); gn.gain.value = Math.min(0.9, v / 14);
   s.connect(f).connect(gn).connect(audio.destination); s.start();
 }
-function ding(delay = 0) {
+// step climbs a major scale, so a run of coins rises note by note
+const MAJOR = [0, 2, 4, 5, 7, 9, 11, 12, 14, 16, 17, 19, 21, 23, 24];
+function ding(delay = 0, step = 0) {
   if (!audio) return; const t = audio.currentTime + delay; const o = audio.createOscillator(); const gn = audio.createGain();
-  o.frequency.setValueAtTime(880, t); o.frequency.exponentialRampToValueAtTime(1320, t + 0.08); gn.gain.setValueAtTime(0.0001, t); gn.gain.exponentialRampToValueAtTime(0.18, t + 0.01); gn.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+  const f = 660 * Math.pow(2, MAJOR[Math.min(step, MAJOR.length - 1)] / 12);
+  o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * 1.5, t + 0.08); gn.gain.setValueAtTime(0.0001, t); gn.gain.exponentialRampToValueAtTime(0.18, t + 0.01); gn.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
   o.connect(gn).connect(audio.destination); o.start(t); o.stop(t + 0.4);
 }
 const vibrate = (ms) => { try { if (navigator.userActivation?.hasBeenActive) navigator.vibrate?.(ms); } catch (e) {} };
@@ -1282,6 +1347,24 @@ function floater(x, y, text) {
   el.style.left = ((v.x + 1) / 2 * innerWidth) + 'px'; el.style.top = ((1 - v.y) / 2 * innerHeight) + 'px';
   $('fx').appendChild(el); setTimeout(() => el.remove(), 1500);
 }
+// a coin pops off the plant and arcs into the coin counter; onLand fires as it arrives
+function flyCoin(x, y, n, delay, onLand) {
+  const v = cellPos(x, y).setY(0.6).project(camera);
+  const sx = (v.x + 1) / 2 * innerWidth, sy = (1 - v.y) / 2 * innerHeight;
+  const r = $('coinIcon').getBoundingClientRect(), tx = r.left + r.width / 2, ty = r.top + r.height / 2;
+  const cx = (sx + tx) / 2 + (Math.random() - 0.5) * 90, cy = Math.min(sy, ty) - 40 - Math.random() * 60;
+  const el = document.createElement('img'); el.className = 'flycoin'; el.alt = ''; el.src = $('coinIcon').src; el.style.opacity = 0;
+  $('fx').appendChild(el);
+  const dur = 0.65, total = delay + dur; let started = false;
+  tween(total, (k) => {
+    const t = (k * total - delay) / dur; if (t < 0) return;
+    if (!started) { started = true; floater(x, y, '+' + n); }
+    const e = t * t, u = 1 - e; // slow pop off the plant, then speeding into the counter
+    const px = u * u * sx + 2 * u * e * cx + e * e * tx, py = u * u * sy + 2 * u * e * cy + e * e * ty;
+    const s = t < 0.15 ? 0.4 + t / 0.15 * 0.8 : 1.2 - 0.5 * e;
+    el.style.opacity = 1; el.style.transform = `translate(${px}px, ${py}px) translate(-50%, -50%) scale(${s})`;
+  }, () => { el.remove(); onLand(); });
+}
 $('helpBtn').onclick = () => { const r = $('rules'); r.innerHTML = availableFaces().map((f) => `<div class="rule"><img src="${faceIcon(f)}" alt=""><p><b>${f}.</b> ${FACE_TIP[f]}</p></div>`).join(''); $('resetBtn').textContent = 'Start a new garden'; $('resetBtn').dataset.armed = ''; $('help').hidden = false; };
 $('closeHelp').onclick = () => { $('help').hidden = true; };
 $('resetBtn').onclick = (e) => {
@@ -1309,6 +1392,7 @@ async function endDay() {
   live.sort((a, b) => ORDER.indexOf(a.face) - ORDER.indexOf(b.face) || a.id - b.id);
   for (const d of live) {
     touched = new Set();
+    burst(FACE_BITS[d.face] || 'leaf', d.cell[0], d.cell[1], 9);
     applyFace(d.face, d.cell[0], d.cell[1]);
     touched.forEach((i) => refreshCell(i, true));
     await wait(0.28);
@@ -1318,15 +1402,23 @@ async function endDay() {
   $('nightText').textContent = `Night ${S.day}`; $('night').classList.add('on');
   await wait(1.1);
   const before = S.grid.map((c) => JSON.stringify([c.plant && c.plant.s, c.plant && c.plant.wilt, c.crit && c.crit.k, c.g]));
+  const stageBefore = S.grid.map((c) => (c.plant ? c.plant.t + ':' + c.plant.s : ''));
   const pay = runNight();
-  S.grid.forEach((c, i) => { if (JSON.stringify([c.plant && c.plant.s, c.plant && c.plant.wilt, c.crit && c.crit.k, c.g]) !== before[i]) refreshCell(i, true); else refreshCell(i, false); });
+  S.grid.forEach((c, i) => {
+    if (JSON.stringify([c.plant && c.plant.s, c.plant && c.plant.wilt, c.crit && c.crit.k, c.g]) === before[i]) return refreshCell(i, false);
+    // a plant that moved up a stage gets the growth squash and a few leaf flecks
+    const [t, s] = stageBefore[i].split(':');
+    const grew = c.plant && c.plant.t === t && c.plant.s > +s;
+    refreshCell(i, grew ? 'grow' : true);
+    if (grew) burst('leaf', i % COLS, Math.floor(i / COLS), 4, 0.6);
+  });
   $('night').classList.remove('on');
   await wait(0.7);
-  // bank the harvest now; the counter catches up as each coin floater pops
+  // bank the harvest now; each coin flies into the counter, the total rolls up and the dings climb a scale
   const earned = pay.reduce((a, p) => a + p.n, 0);
   let shown = S.coins; S.coins += earned;
-  pay.forEach((p, j) => setTimeout(() => { floater(p.x, p.y, '+' + p.n); shown += p.n; bumpCoins(shown); ding(); }, j * 160));
-  await wait(pay.length * 0.16 + 0.9);
+  pay.forEach((p, j) => flyCoin(p.x, p.y, p.n, j * 0.14, () => { shown += p.n; bumpCoins(shown); ding(0, j); }));
+  await wait(pay.length * 0.14 + 0.9);
   bumpCoins();
   // harvest is automatic: report it and roll straight into the next day
   toast($('coinIcon').src, earned ? `<b>Night ${S.day} harvest:</b> +${earned} coins` : `<b>Night ${S.day}:</b> nothing to harvest yet`, 3400);
@@ -1442,7 +1534,14 @@ function update(dt) {
       else { phase = 'aim'; makePreview(); renderPips(); }
     }
   }
-  if (preview) { preview.mesh.position.y = LAUNCH.y + Math.sin(t * 3) * 0.06; preview.mesh.rotation.y += dt * (aim.on ? 3 + aim.power * 10 : 0.8); }
+  if (preview) {
+    // slingshot: pulling back draws the die toward you, squashes it along the aim and makes it tremble
+    const p = aim.on ? aim.power : 0, wob = p > 0.05 ? Math.sin(t * (18 + p * 30)) * 0.035 * p : 0;
+    preview.rig.position.set(LAUNCH.x - aim.dir.x * p * 0.45, LAUNCH.y + Math.sin(t * 3) * 0.06 * (1 - p), LAUNCH.z - aim.dir.z * p * 0.45);
+    preview.rig.rotation.y = Math.atan2(aim.dir.x, aim.dir.z);
+    preview.rig.scale.set(1 + 0.1 * p + wob, 1 + 0.06 * p, 1 - 0.22 * p - wob);
+    preview.mesh.rotation.y += dt * (aim.on ? 3 + p * 10 : 0.8);
+  }
   for (const v of views) for (const s of v.crits) s.position.y = s.userData.baseY + Math.abs(Math.sin(t * 2.4 + s.userData.phase)) * 0.06;
   const live = tweens; tweens = [];
   const keep = live.filter((tw) => { tw.t += dt; const k = Math.min(1, tw.t / tw.dur); tw.fn(k); if (k >= 1) { tw.done && tw.done(); return false; } return true; });
@@ -1467,7 +1566,7 @@ window.claude?.hot?.snapshot?.(() => ({ S }));
 window.claude?.hot?.ready ? window.claude.hot.ready(boot) : boot(window.claude?.hot?.data ?? {});
 
 // test hooks for playtesting
-window.GD = { get S() { return S; }, get phase() { return phase; }, get dice() { return dice; },
+window.GD = { get S() { return S; }, get phase() { return phase; }, get dice() { return dice; }, get preview() { return preview; },
   TUNE, rules: { applyFace, runNight, stateOf, newGame, newPlant, set S(v) { S = v; } }, refreshAll,
   // art export: the canvas draw functions, so placeholder art can be saved as reference PNGs
   art: { SPR, CRIT, ICON, mk, drawTile, autoPath, composeTile, useTileset, loadTilesets, tilesets },
